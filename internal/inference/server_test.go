@@ -78,6 +78,14 @@ func TestServeRejectsInsecureNonLoopback(t *testing.T) {
 	}
 }
 
+func TestServeRejectsInsecureWildcardAddress(t *testing.T) {
+	cfg := config.Default().Inference
+	cfg.Address = ":8770"
+	if err := Serve(context.Background(), cfg, fakeControl{}, tokens.Store{Path: filepath.Join(t.TempDir(), "tokens.json")}); err == nil {
+		t.Fatal("Serve accepted insecure wildcard address")
+	}
+}
+
 type fakeControl struct {
 	status    service.Status
 	instances []service.InstanceSummary

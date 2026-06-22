@@ -133,7 +133,7 @@ func isLoopbackAddress(address string) bool {
 	if err != nil {
 		return address == "localhost" || strings.HasPrefix(address, "127.") || address == "::1"
 	}
-	if host == "" || host == "localhost" {
+	if host == "localhost" {
 		return true
 	}
 	ip := net.ParseIP(host)
