@@ -42,6 +42,8 @@ func run(args []string) error {
 		return runStatus(args[1:])
 	case "ssh":
 		return runSSH(args[1:])
+	case "tokens":
+		return runTokens(args[1:])
 	case "serve":
 		return runServe(args[1:])
 	case "version":
@@ -171,6 +173,92 @@ func runProfilesValidate(args []string) error {
 		fmt.Println(validationErr)
 	}
 	return fmt.Errorf("profile %q is invalid", fs.Arg(0))
+}
+
+func runTokens(args []string) error {
+	if len(args) == 0 {
+		return fmt.Errorf("tokens subcommand is required")
+	}
+	switch args[0] {
+	case "create":
+		return runTokensCreate(args[1:])
+	case "list":
+		return runTokensList(args[1:])
+	case "revoke":
+		return runTokensRevoke(args[1:])
+	default:
+		return fmt.Errorf("unknown tokens subcommand %q", args[0])
+	}
+}
+
+func runTokensCreate(args []string) error {
+	fs := flag.NewFlagSet("tokens create", flag.ContinueOnError)
+	fs.SetOutput(os.Stderr)
+	configPath := fs.String("config", config.DefaultPath, "config file path")
+	name := fs.String("name", "", "token name")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if fs.NArg() != 0 {
+		return fmt.Errorf("tokens create takes no positional arguments")
+	}
+	cfg, err := config.Load(*configPath)
+	if err != nil {
+		return err
+	}
+	created, err := service.New(cfg, version.Version).CreateInferenceToken(context.Background(), *name)
+	if err != nil {
+		return err
+	}
+	fmt.Printf("id: %s\nname: %s\nprefix: %s\ntoken: %s\n", created.ID, created.Name, created.Prefix, created.Raw)
+	return nil
+}
+
+func runTokensList(args []string) error {
+	fs := flag.NewFlagSet("tokens list", flag.ContinueOnError)
+	fs.SetOutput(os.Stderr)
+	configPath := fs.String("config", config.DefaultPath, "config file path")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if fs.NArg() != 0 {
+		return fmt.Errorf("tokens list takes no positional arguments")
+	}
+	cfg, err := config.Load(*configPath)
+	if err != nil {
+		return err
+	}
+	list, err := service.New(cfg, version.Version).ListInferenceTokens(context.Background())
+	if err != nil {
+		return err
+	}
+	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+	fmt.Fprintln(w, "ID\tNAME\tPREFIX\tSTATUS\tCREATED")
+	for _, token := range list {
+		status := "active"
+		if token.Revoked {
+			status = "revoked"
+		}
+		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\n", token.ID, token.Name, token.Prefix, status, token.CreatedAt)
+	}
+	return w.Flush()
+}
+
+func runTokensRevoke(args []string) error {
+	fs := flag.NewFlagSet("tokens revoke", flag.ContinueOnError)
+	fs.SetOutput(os.Stderr)
+	configPath := fs.String("config", config.DefaultPath, "config file path")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if fs.NArg() != 1 {
+		return fmt.Errorf("tokens revoke requires exactly one token id")
+	}
+	cfg, err := config.Load(*configPath)
+	if err != nil {
+		return err
+	}
+	return service.New(cfg, version.Version).RevokeInferenceToken(context.Background(), fs.Arg(0))
 }
 
 func runSSH(args []string) error {
@@ -334,6 +422,9 @@ Usage:
   unumd ssh add-key [--config PATH] --name NAME [--role admin] PATH
   unumd ssh list-keys [--config PATH]
   unumd ssh revoke-key [--config PATH] ID
+  unumd tokens create [--config PATH] --name NAME
+  unumd tokens list [--config PATH]
+  unumd tokens revoke [--config PATH] ID
   unumd serve --config PATH --check
   unumd version
   unumd help`)

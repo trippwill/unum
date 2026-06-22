@@ -202,6 +202,37 @@ func TestStartProfileStopsAndRemovesContainerWhenInspectFails(t *testing.T) {
 	}
 }
 
+func TestInferenceTokenLifecycle(t *testing.T) {
+	cfg := config.Default()
+	cfg.Storage.State = t.TempDir()
+	svc := New(cfg, "test-version")
+
+	created, err := svc.CreateInferenceToken(context.Background(), "editor")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if created.Raw == "" || created.Prefix == "" {
+		t.Fatalf("created = %+v", created)
+	}
+	list, err := svc.ListInferenceTokens(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(list) != 1 || list[0].Name != "editor" || list[0].Revoked {
+		t.Fatalf("list = %+v", list)
+	}
+	if err := svc.RevokeInferenceToken(context.Background(), created.ID); err != nil {
+		t.Fatal(err)
+	}
+	list, err = svc.ListInferenceTokens(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !list[0].Revoked {
+		t.Fatalf("token was not revoked: %+v", list)
+	}
+}
+
 type fakeRuntime struct {
 	status     podman.ContainerStatus
 	calls      []string

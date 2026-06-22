@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"path/filepath"
 	"sync"
 	"time"
 
@@ -12,6 +13,7 @@ import (
 	"github.com/trippwill/unum/internal/config"
 	"github.com/trippwill/unum/internal/profile"
 	"github.com/trippwill/unum/internal/runtime/podman"
+	"github.com/trippwill/unum/internal/tokens"
 )
 
 type Service struct {
@@ -87,6 +89,13 @@ type InferenceTokenSummary struct {
 	Prefix    string
 	Revoked   bool
 	CreatedAt string
+}
+
+type CreatedInferenceToken struct {
+	ID     string
+	Name   string
+	Prefix string
+	Raw    string
 }
 
 func WithRuntimeBackend(backend runtimeBackend) Option {
@@ -261,7 +270,38 @@ func (s *Service) ListOperations(context.Context) ([]OperationSummary, error) {
 }
 
 func (s *Service) ListInferenceTokens(context.Context) ([]InferenceTokenSummary, error) {
-	return []InferenceTokenSummary{}, nil
+	list, err := s.tokenStore().List()
+	if err != nil {
+		return nil, err
+	}
+	summaries := make([]InferenceTokenSummary, 0, len(list))
+	for _, token := range list {
+		summaries = append(summaries, InferenceTokenSummary{
+			ID:        token.ID,
+			Name:      token.Name,
+			Prefix:    token.Prefix,
+			Revoked:   token.Revoked,
+			CreatedAt: token.CreatedAt.Format(time.RFC3339),
+		})
+	}
+	return summaries, nil
+}
+
+func (s *Service) CreateInferenceToken(_ context.Context, name string) (CreatedInferenceToken, error) {
+	created, err := s.tokenStore().Create(name)
+	if err != nil {
+		return CreatedInferenceToken{}, err
+	}
+	return CreatedInferenceToken{
+		ID:     created.Token.ID,
+		Name:   created.Token.Name,
+		Prefix: created.Token.Prefix,
+		Raw:    created.Raw,
+	}, nil
+}
+
+func (s *Service) RevokeInferenceToken(_ context.Context, id string) error {
+	return s.tokenStore().Revoke(id)
 }
 
 func (s *Service) WatchEvents(context.Context) (<-chan Event, error) {
@@ -318,6 +358,10 @@ func (s *Service) operationState() string {
 		}
 	}
 	return "idle"
+}
+
+func (s *Service) tokenStore() tokens.Store {
+	return tokens.Store{Path: filepath.Join(s.cfg.Storage.State, "tokens", "inference-tokens.json")}
 }
 
 func inferenceEndpoint(cfg config.InferenceConfig) string {

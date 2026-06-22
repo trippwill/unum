@@ -54,3 +54,24 @@ func TestTokenRegistryPermissions(t *testing.T) {
 		t.Fatalf("permissions = %o", got)
 	}
 }
+
+func TestRevokeInvalidatesToken(t *testing.T) {
+	store := Store{Path: filepath.Join(t.TempDir(), "tokens.json")}
+	created, err := store.Create("editor")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Revoke(created.Token.ID); err != nil {
+		t.Fatal(err)
+	}
+	if ok, err := store.Validate(created.Raw); err != nil || ok {
+		t.Fatalf("revoked token validated: %v %v", ok, err)
+	}
+	list, err := store.List()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(list) != 1 || !list[0].Revoked {
+		t.Fatalf("list = %+v", list)
+	}
+}

@@ -85,6 +85,31 @@ func (s Store) Validate(raw string) (bool, error) {
 	return false, nil
 }
 
+func (s Store) List() ([]Token, error) {
+	reg, err := s.Load()
+	if err != nil {
+		return nil, err
+	}
+	return append([]Token(nil), reg.Tokens...), nil
+}
+
+func (s Store) Revoke(id string) error {
+	if strings.TrimSpace(id) == "" {
+		return fmt.Errorf("token id is required")
+	}
+	reg, err := s.Load()
+	if err != nil {
+		return err
+	}
+	for i := range reg.Tokens {
+		if reg.Tokens[i].ID == id {
+			reg.Tokens[i].Revoked = true
+			return s.Save(reg)
+		}
+	}
+	return fmt.Errorf("token %q not found", id)
+}
+
 func (s Store) Load() (Registry, error) {
 	data, err := os.ReadFile(s.Path)
 	if os.IsNotExist(err) {
@@ -101,6 +126,7 @@ func (s Store) Load() (Registry, error) {
 }
 
 func (s Store) Save(reg Registry) error {
+	// ponytail: whole-file token write; add file locking if concurrent admins matter.
 	data, err := json.MarshalIndent(reg, "", "  ")
 	if err != nil {
 		return fmt.Errorf("marshal token registry: %w", err)
