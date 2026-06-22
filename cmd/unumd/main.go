@@ -4,9 +4,11 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"text/tabwriter"
 
 	"github.com/trippwill/unum/internal/config"
 	"github.com/trippwill/unum/internal/setup"
+	"github.com/trippwill/unum/internal/sshkeys"
 	"github.com/trippwill/unum/internal/version"
 )
 
@@ -26,6 +28,8 @@ func run(args []string) error {
 	switch args[0] {
 	case "init":
 		return runInit(args[1:])
+	case "ssh":
+		return runSSH(args[1:])
 	case "serve":
 		return runServe(args[1:])
 	case "version":
@@ -57,6 +61,85 @@ func runInit(args []string) error {
 	return setup.Init(opts)
 }
 
+func runSSH(args []string) error {
+	if len(args) == 0 {
+		return fmt.Errorf("ssh subcommand is required")
+	}
+	switch args[0] {
+	case "add-key":
+		return runSSHAddKey(args[1:])
+	case "list-keys":
+		return runSSHListKeys(args[1:])
+	case "revoke-key":
+		return runSSHRevokeKey(args[1:])
+	default:
+		return fmt.Errorf("unknown ssh subcommand %q", args[0])
+	}
+}
+
+func runSSHAddKey(args []string) error {
+	fs := flag.NewFlagSet("ssh add-key", flag.ContinueOnError)
+	fs.SetOutput(os.Stderr)
+	registry := fs.String("registry", sshkeys.DefaultRegistryPath, "authorized clients registry")
+	name := fs.String("name", "", "client name")
+	role := fs.String("role", sshkeys.AdminRole, "client role")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if fs.NArg() != 1 {
+		return fmt.Errorf("ssh add-key requires exactly one public key path")
+	}
+	key, err := os.ReadFile(fs.Arg(0))
+	if err != nil {
+		return fmt.Errorf("read public key %s: %w", fs.Arg(0), err)
+	}
+	client, err := (sshkeys.Store{Path: *registry}).Add(*name, *role, key)
+	if err != nil {
+		return err
+	}
+	fmt.Println(client.ID)
+	return nil
+}
+
+func runSSHListKeys(args []string) error {
+	fs := flag.NewFlagSet("ssh list-keys", flag.ContinueOnError)
+	fs.SetOutput(os.Stderr)
+	registry := fs.String("registry", sshkeys.DefaultRegistryPath, "authorized clients registry")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if fs.NArg() != 0 {
+		return fmt.Errorf("ssh list-keys takes no positional arguments")
+	}
+	reg, err := (sshkeys.Store{Path: *registry}).Load()
+	if err != nil {
+		return err
+	}
+	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+	fmt.Fprintln(w, "ID\tNAME\tROLE\tSTATUS\tCREATED")
+	for _, client := range reg.Clients {
+		status := "active"
+		if client.Revoked {
+			status = "revoked"
+		}
+		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\n", client.ID, client.Name, client.Role, status, client.CreatedAt.Format(timeLayout))
+	}
+	return w.Flush()
+}
+
+func runSSHRevokeKey(args []string) error {
+	fs := flag.NewFlagSet("ssh revoke-key", flag.ContinueOnError)
+	fs.SetOutput(os.Stderr)
+	registry := fs.String("registry", sshkeys.DefaultRegistryPath, "authorized clients registry")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if fs.NArg() != 1 {
+		return fmt.Errorf("ssh revoke-key requires exactly one client id")
+	}
+	return (sshkeys.Store{Path: *registry}).Revoke(fs.Arg(0))
+}
+
 func runServe(args []string) error {
 	fs := flag.NewFlagSet("serve", flag.ContinueOnError)
 	fs.SetOutput(os.Stderr)
@@ -84,7 +167,12 @@ func usage() {
 
 Usage:
   unumd init [--config PATH] [--state PATH] [--server-name NAME]
+  unumd ssh add-key --name NAME [--role admin] PATH
+  unumd ssh list-keys
+  unumd ssh revoke-key ID
   unumd serve --config PATH --check
   unumd version
   unumd help`)
 }
+
+const timeLayout = "2006-01-02T15:04:05Z07:00"
