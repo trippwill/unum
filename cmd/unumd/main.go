@@ -1,12 +1,14 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"os"
 	"text/tabwriter"
 
 	"github.com/trippwill/unum/internal/config"
+	"github.com/trippwill/unum/internal/service"
 	"github.com/trippwill/unum/internal/setup"
 	"github.com/trippwill/unum/internal/sshkeys"
 	"github.com/trippwill/unum/internal/version"
@@ -28,6 +30,8 @@ func run(args []string) error {
 	switch args[0] {
 	case "init":
 		return runInit(args[1:])
+	case "status":
+		return runStatus(args[1:])
 	case "ssh":
 		return runSSH(args[1:])
 	case "serve":
@@ -59,6 +63,34 @@ func runInit(args []string) error {
 		return fmt.Errorf("init takes no positional arguments")
 	}
 	return setup.Init(opts)
+}
+
+func runStatus(args []string) error {
+	fs := flag.NewFlagSet("status", flag.ContinueOnError)
+	fs.SetOutput(os.Stderr)
+	configPath := fs.String("config", config.DefaultPath, "config file path")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if fs.NArg() != 0 {
+		return fmt.Errorf("status takes no positional arguments")
+	}
+	cfg, err := config.Load(*configPath)
+	if err != nil {
+		return err
+	}
+	status, err := service.New(cfg, version.Version).Status(context.Background())
+	if err != nil {
+		return err
+	}
+	fmt.Printf("Server: %s\n", status.ServerName)
+	fmt.Printf("Version: %s\n", status.Version)
+	fmt.Printf("Runtime: %s\n", status.RuntimeBackend)
+	fmt.Printf("SSH: %s\n", status.SSHAddress)
+	fmt.Printf("Inference: %s\n", status.InferenceEndpoint)
+	fmt.Printf("Active: %s\n", status.ActiveProfile)
+	fmt.Printf("Operations: %s\n", status.Operations)
+	return nil
 }
 
 func runSSH(args []string) error {
@@ -167,6 +199,7 @@ func usage() {
 
 Usage:
   unumd init [--config PATH] [--state PATH] [--server-name NAME]
+  unumd status [--config PATH]
   unumd ssh add-key --name NAME [--role admin] PATH
   unumd ssh list-keys
   unumd ssh revoke-key ID
