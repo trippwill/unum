@@ -122,6 +122,27 @@ func LoadDir(dir string) ([]Summary, error) {
 	return summaries, nil
 }
 
+func Find(dir, id string) (Profile, ValidationResult, error) {
+	summaries, err := LoadDir(dir)
+	if err != nil {
+		return Profile{}, ValidationResult{}, err
+	}
+	for _, summary := range summaries {
+		if summary.ID != id {
+			continue
+		}
+		if !summary.Validation.Valid {
+			return Profile{}, summary.Validation, nil
+		}
+		p, err := LoadFile(summary.Path)
+		if err != nil {
+			return Profile{}, ValidationResult{Errors: []string{err.Error()}}, nil
+		}
+		return p, summary.Validation, nil
+	}
+	return Profile{}, ValidationResult{}, fmt.Errorf("profile %q not found", id)
+}
+
 func Validate(p Profile) ValidationResult {
 	var errs []string
 	required := map[string]string{

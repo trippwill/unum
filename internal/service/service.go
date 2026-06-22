@@ -2,16 +2,39 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"sync"
+	"time"
+
 	"strings"
 
 	"github.com/trippwill/unum/internal/config"
 	"github.com/trippwill/unum/internal/profile"
+	"github.com/trippwill/unum/internal/runtime/podman"
 )
 
 type Service struct {
 	cfg     config.Config
 	version string
+	runtime runtimeBackend
+	mu      sync.Mutex
+	nextOp  int
+	// ponytail: in-memory operation/instance state; persist when daemon restart recovery matters.
+	operations []OperationSummary
+	instances  map[string]InstanceSummary
+	events     []Event
+}
+
+type Option func(*Service)
+
+type runtimeBackend interface {
+	EnsureImage(context.Context, string) error
+	Create(context.Context, profile.Profile) (podman.ContainerID, error)
+	Start(context.Context, podman.ContainerID) error
+	Stop(context.Context, podman.ContainerID) error
+	Remove(context.Context, podman.ContainerID) error
+	Inspect(context.Context, podman.ContainerID) (podman.ContainerStatus, error)
 }
 
 type Status struct {
@@ -49,6 +72,15 @@ type OperationSummary struct {
 	Message string
 }
 
+type Event struct {
+	OperationID string
+	Target      string
+	Phase       string
+	State       string
+	Message     string
+	At          time.Time
+}
+
 type InferenceTokenSummary struct {
 	ID        string
 	Name      string
@@ -57,8 +89,23 @@ type InferenceTokenSummary struct {
 	CreatedAt string
 }
 
-func New(cfg config.Config, version string) *Service {
-	return &Service{cfg: cfg, version: version}
+func WithRuntimeBackend(backend runtimeBackend) Option {
+	return func(s *Service) {
+		s.runtime = backend
+	}
+}
+
+func New(cfg config.Config, version string, opts ...Option) *Service {
+	s := &Service{
+		cfg:       cfg,
+		version:   version,
+		runtime:   podman.New(),
+		instances: map[string]InstanceSummary{},
+	}
+	for _, opt := range opts {
+		opt(s)
+	}
+	return s
 }
 
 func (s *Service) Status(context.Context) (Status, error) {
@@ -69,7 +116,7 @@ func (s *Service) Status(context.Context) (Status, error) {
 		SSHAddress:        s.cfg.SSHTUI.Address,
 		InferenceEndpoint: inferenceEndpoint(s.cfg.Inference),
 		ActiveProfile:     s.cfg.Inference.ActiveProfile,
-		Operations:        "idle",
+		Operations:        s.operationState(),
 	}, nil
 }
 
@@ -84,11 +131,17 @@ func (s *Service) ListProfiles(context.Context) ([]ProfileSummary, error) {
 		if len(summary.Validation.Errors) > 0 {
 			reason = summary.Validation.Errors[0]
 		}
+		state := "stopped"
+		s.mu.Lock()
+		if instance, ok := s.instances[summary.ID]; ok {
+			state = instance.State
+		}
+		s.mu.Unlock()
 		profiles = append(profiles, ProfileSummary{
 			ID:     summary.ID,
 			Name:   summary.Name,
 			Valid:  summary.Validation.Valid,
-			State:  "stopped",
+			State:  state,
 			Reason: reason,
 		})
 	}
@@ -108,16 +161,163 @@ func (s *Service) ValidateProfile(ctx context.Context, id string) (profile.Valid
 	return profile.ValidationResult{}, fmt.Errorf("profile %q not found", id)
 }
 
+func (s *Service) StartProfile(ctx context.Context, id string) (OperationSummary, error) {
+	op := s.beginOperation(id, "start")
+	p, validation, err := profile.Find(s.cfg.Storage.Profiles, id)
+	if err != nil {
+		return s.failOperation(op.ID, "validating", err.Error()), err
+	}
+	if !validation.Valid {
+		reason := "profile invalid"
+		if len(validation.Errors) > 0 {
+			reason = validation.Errors[0]
+		}
+		err := fmt.Errorf("profile %q is invalid: %s", id, reason)
+		return s.failOperation(op.ID, "validating", err.Error()), err
+	}
+	s.updateOperation(op.ID, "checking image", "running", p.Image.Ref)
+	if err := s.runtime.EnsureImage(ctx, p.Image.Ref); err != nil {
+		return s.failOperation(op.ID, "checking image", err.Error()), err
+	}
+	s.updateOperation(op.ID, "creating container", "running", id)
+	containerID, err := s.runtime.Create(ctx, p)
+	if err != nil {
+		return s.failOperation(op.ID, "creating container", err.Error()), err
+	}
+	s.updateOperation(op.ID, "starting container", "running", string(containerID))
+	if err := s.runtime.Start(ctx, containerID); err != nil {
+		cleanupCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		if cleanupErr := s.runtime.Remove(cleanupCtx, containerID); cleanupErr != nil {
+			err = errors.Join(err, fmt.Errorf("remove failed container %s: %w", containerID, cleanupErr))
+		}
+		return s.failOperation(op.ID, "starting container", err.Error()), err
+	}
+	s.updateOperation(op.ID, "waiting for health", "running", string(containerID))
+	status, err := s.runtime.Inspect(ctx, containerID)
+	if err != nil {
+		cleanupCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		if stopErr := s.runtime.Stop(cleanupCtx, containerID); stopErr != nil {
+			err = errors.Join(err, fmt.Errorf("stop failed container %s: %w", containerID, stopErr))
+		}
+		if cleanupErr := s.runtime.Remove(cleanupCtx, containerID); cleanupErr != nil {
+			err = errors.Join(err, fmt.Errorf("remove failed container %s: %w", containerID, cleanupErr))
+		}
+		return s.failOperation(op.ID, "waiting for health", err.Error()), err
+	}
+	s.mu.Lock()
+	s.instances[id] = InstanceSummary{
+		ID:        string(containerID),
+		ProfileID: id,
+		Runtime:   s.cfg.Runtime.Backend,
+		State:     status.State,
+		Health:    status.Health,
+		Endpoint:  fmt.Sprintf("http://%s:%d", p.Server.Host, p.Server.Port),
+	}
+	s.mu.Unlock()
+	return s.succeedOperation(op.ID, "ready", string(containerID)), nil
+}
+
+func (s *Service) StopProfile(ctx context.Context, id string) (OperationSummary, error) {
+	op := s.beginOperation(id, "stop")
+	s.mu.Lock()
+	instance, ok := s.instances[id]
+	s.mu.Unlock()
+	if !ok {
+		err := fmt.Errorf("profile %q has no running instance", id)
+		return s.failOperation(op.ID, "stopping container", err.Error()), err
+	}
+	containerID := podman.ContainerID(instance.ID)
+	s.updateOperation(op.ID, "stopping container", "running", instance.ID)
+	if err := s.runtime.Stop(ctx, containerID); err != nil {
+		return s.failOperation(op.ID, "stopping container", err.Error()), err
+	}
+	s.updateOperation(op.ID, "removing container", "running", instance.ID)
+	if err := s.runtime.Remove(ctx, containerID); err != nil {
+		return s.failOperation(op.ID, "removing container", err.Error()), err
+	}
+	s.mu.Lock()
+	delete(s.instances, id)
+	s.mu.Unlock()
+	return s.succeedOperation(op.ID, "stopped", instance.ID), nil
+}
+
 func (s *Service) ListInstances(context.Context) ([]InstanceSummary, error) {
-	return []InstanceSummary{}, nil
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	instances := make([]InstanceSummary, 0, len(s.instances))
+	for _, instance := range s.instances {
+		instances = append(instances, instance)
+	}
+	return instances, nil
 }
 
 func (s *Service) ListOperations(context.Context) ([]OperationSummary, error) {
-	return []OperationSummary{}, nil
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	ops := append([]OperationSummary(nil), s.operations...)
+	return ops, nil
 }
 
 func (s *Service) ListInferenceTokens(context.Context) ([]InferenceTokenSummary, error) {
 	return []InferenceTokenSummary{}, nil
+}
+
+func (s *Service) WatchEvents(context.Context) (<-chan Event, error) {
+	s.mu.Lock()
+	events := append([]Event(nil), s.events...)
+	s.mu.Unlock()
+	ch := make(chan Event, len(events))
+	for _, event := range events {
+		ch <- event
+	}
+	close(ch)
+	return ch, nil
+}
+
+func (s *Service) beginOperation(target, phase string) OperationSummary {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.nextOp++
+	op := OperationSummary{ID: fmt.Sprintf("op_%d", s.nextOp), Target: target, Phase: phase, State: "running"}
+	s.operations = append(s.operations, op)
+	s.events = append(s.events, Event{OperationID: op.ID, Target: target, Phase: phase, State: "running", At: time.Now().UTC()})
+	return op
+}
+
+func (s *Service) updateOperation(id, phase, state, message string) OperationSummary {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for i := range s.operations {
+		if s.operations[i].ID == id {
+			s.operations[i].Phase = phase
+			s.operations[i].State = state
+			s.operations[i].Message = message
+			s.events = append(s.events, Event{OperationID: id, Target: s.operations[i].Target, Phase: phase, State: state, Message: message, At: time.Now().UTC()})
+			return s.operations[i]
+		}
+	}
+	return OperationSummary{}
+}
+
+func (s *Service) failOperation(id, phase, message string) OperationSummary {
+	return s.updateOperation(id, phase, "failed", message)
+}
+
+func (s *Service) succeedOperation(id, phase, message string) OperationSummary {
+	return s.updateOperation(id, phase, "succeeded", message)
+}
+
+func (s *Service) operationState() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for i := len(s.operations) - 1; i >= 0; i-- {
+		if s.operations[i].State == "running" {
+			return s.operations[i].Phase
+		}
+	}
+	return "idle"
 }
 
 func inferenceEndpoint(cfg config.InferenceConfig) string {
