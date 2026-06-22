@@ -1,0 +1,46 @@
+[tools]
+go = "1.26"
+
+[tasks.fmt]
+description = "Format Go sources"
+run = "go fmt ./..."
+
+[tasks.fmt-check]
+description = "Verify Go sources are formatted"
+run = """
+files="$(gofmt -l .)"
+if [ -n "$files" ]; then
+  echo "$files"
+  exit 1
+fi
+"""
+
+[tasks.vet]
+description = "Run go vet"
+run = "go vet ./..."
+
+[tasks.test]
+description = "Run tests"
+run = "go test ./..."
+
+[tasks.build]
+description = "Build unumd"
+run = "go build -o bin/unumd ./cmd/unumd"
+
+[tasks.precommit]
+description = "Format, vet, test, and build"
+run = """
+go fmt ./...
+go vet ./...
+go test ./...
+go build -o bin/unumd ./cmd/unumd
+"""
+
+[tasks.ci]
+description = "CI checks"
+run = """
+mise run fmt-check
+go vet ./...
+go test ./...
+go build -o bin/unumd ./cmd/unumd
+"""
