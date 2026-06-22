@@ -11,10 +11,12 @@ import (
 	"text/tabwriter"
 
 	"github.com/trippwill/unum/internal/config"
+	"github.com/trippwill/unum/internal/inference"
 	"github.com/trippwill/unum/internal/service"
 	"github.com/trippwill/unum/internal/setup"
 	"github.com/trippwill/unum/internal/sshkeys"
 	"github.com/trippwill/unum/internal/sshui"
+	"github.com/trippwill/unum/internal/tokens"
 	"github.com/trippwill/unum/internal/version"
 )
 
@@ -297,7 +299,28 @@ func runServe(args []string) error {
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	return sshui.Serve(ctx, cfg, service.New(cfg, version.Version))
+	return serve(ctx, cfg, service.New(cfg, version.Version))
+}
+
+func serve(ctx context.Context, cfg config.Config, svc *service.Service) error {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	errc := make(chan error, 2)
+	count := 1
+	go func() { errc <- sshui.Serve(ctx, cfg, svc) }()
+	if cfg.Inference.Enabled {
+		count++
+		tokenStore := tokens.Store{Path: filepath.Join(cfg.Storage.State, "tokens", "inference-tokens.json")}
+		go func() { errc <- inference.Serve(ctx, cfg.Inference, svc, tokenStore) }()
+	}
+	var firstErr error
+	for range count {
+		if err := <-errc; err != nil && firstErr == nil {
+			firstErr = err
+			cancel()
+		}
+	}
+	return firstErr
 }
 
 func usage() {
