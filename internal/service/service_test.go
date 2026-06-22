@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"testing"
+	"time"
 
 	"github.com/trippwill/unum/internal/config"
 	"github.com/trippwill/unum/internal/profile"
@@ -96,7 +97,7 @@ func TestStartAndStopProfileRecordsOperationsAndInstance(t *testing.T) {
 	writeServiceProfile(t, filepath.Join(dir, "qwen.toml"), "qwen", model)
 	cfg := config.Default()
 	cfg.Storage.Profiles = dir
-	runtime := &fakeRuntime{status: podman.ContainerStatus{ID: "container-1", State: "running", Health: "healthy"}}
+	runtime := &fakeRuntime{status: podman.ContainerStatus{ID: "container-1", State: "running", Health: "healthy", Started: time.Unix(100, 0)}}
 	svc := New(cfg, "test-version", WithRuntimeBackend(runtime))
 
 	start, err := svc.StartProfile(context.Background(), "qwen")
@@ -116,6 +117,9 @@ func TestStartAndStopProfileRecordsOperationsAndInstance(t *testing.T) {
 	}
 	if len(instances) != 1 || instances[0].ProfileID != "qwen" || instances[0].Health != "healthy" {
 		t.Fatalf("instances = %+v", instances)
+	}
+	if instances[0].StartedAt == "" {
+		t.Fatalf("StartedAt was not set: %+v", instances[0])
 	}
 
 	stop, err := svc.StopProfile(context.Background(), "qwen")
@@ -141,6 +145,40 @@ func TestStartAndStopProfileRecordsOperationsAndInstance(t *testing.T) {
 		if !contains(phases, phase) {
 			t.Fatalf("events missing %q: %v", phase, phases)
 		}
+	}
+}
+
+func TestTailLogsReadsRuntimeLogs(t *testing.T) {
+	dir := t.TempDir()
+	model := t.TempDir()
+	writeServiceProfile(t, filepath.Join(dir, "qwen.toml"), "qwen", model)
+	cfg := config.Default()
+	cfg.Storage.Profiles = dir
+	runtime := &fakeRuntime{
+		status: podman.ContainerStatus{ID: "container-1", State: "running", Health: "healthy"},
+		logs:   []podman.LogLine{{Text: "ready"}, {Text: "served"}},
+	}
+	svc := New(cfg, "test-version", WithRuntimeBackend(runtime))
+	if _, err := svc.StartProfile(context.Background(), "qwen"); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := svc.TailLogs(context.Background(), "container-1", 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 2 || got[0].Text != "ready" || got[1].Text != "served" {
+		t.Fatalf("logs = %+v", got)
+	}
+	if runtime.logTail != 2 {
+		t.Fatalf("tail = %d", runtime.logTail)
+	}
+}
+
+func TestTailLogsRejectsUnknownInstance(t *testing.T) {
+	svc := New(config.Default(), "test-version", WithRuntimeBackend(&fakeRuntime{}))
+	if _, err := svc.TailLogs(context.Background(), "missing", 10); err == nil {
+		t.Fatal("TailLogs accepted unknown instance")
 	}
 }
 
@@ -238,6 +276,8 @@ type fakeRuntime struct {
 	calls      []string
 	startErr   error
 	inspectErr error
+	logs       []podman.LogLine
+	logTail    int
 }
 
 func (f *fakeRuntime) EnsureImage(_ context.Context, image string) error {
@@ -271,6 +311,17 @@ func (f *fakeRuntime) Inspect(_ context.Context, id podman.ContainerID) (podman.
 		return podman.ContainerStatus{}, f.inspectErr
 	}
 	return f.status, nil
+}
+
+func (f *fakeRuntime) Logs(_ context.Context, id podman.ContainerID, opts podman.LogOptions) (<-chan podman.LogLine, error) {
+	f.calls = append(f.calls, "logs:"+string(id))
+	f.logTail = opts.Tail
+	ch := make(chan podman.LogLine, len(f.logs))
+	for _, line := range f.logs {
+		ch <- line
+	}
+	close(ch)
+	return ch, nil
 }
 
 func writeServiceProfile(t *testing.T, path, id, model string) {

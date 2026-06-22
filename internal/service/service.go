@@ -37,6 +37,7 @@ type runtimeBackend interface {
 	Stop(context.Context, podman.ContainerID) error
 	Remove(context.Context, podman.ContainerID) error
 	Inspect(context.Context, podman.ContainerID) (podman.ContainerStatus, error)
+	Logs(context.Context, podman.ContainerID, podman.LogOptions) (<-chan podman.LogLine, error)
 }
 
 type Status struct {
@@ -64,6 +65,7 @@ type InstanceSummary struct {
 	State     string
 	Health    string
 	Endpoint  string
+	StartedAt string
 }
 
 type OperationSummary struct {
@@ -72,6 +74,12 @@ type OperationSummary struct {
 	Phase   string
 	State   string
 	Message string
+}
+
+type LogLine struct {
+	InstanceID string
+	Text       string
+	Err        error
 }
 
 type Event struct {
@@ -223,6 +231,7 @@ func (s *Service) StartProfile(ctx context.Context, id string) (OperationSummary
 		State:     status.State,
 		Health:    status.Health,
 		Endpoint:  fmt.Sprintf("http://%s:%d", p.Server.Host, p.Server.Port),
+		StartedAt: formatTime(status.Started),
 	}
 	s.mu.Unlock()
 	return s.succeedOperation(op.ID, "ready", string(containerID)), nil
@@ -260,6 +269,49 @@ func (s *Service) ListInstances(context.Context) ([]InstanceSummary, error) {
 		instances = append(instances, instance)
 	}
 	return instances, nil
+}
+
+func (s *Service) TailLogs(ctx context.Context, instanceID string, lines int) ([]LogLine, error) {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	stream, err := s.StreamLogs(ctx, instanceID, podman.LogOptions{Tail: lines})
+	if err != nil {
+		return nil, err
+	}
+	var out []LogLine
+	for line := range stream {
+		if line.Err != nil {
+			return out, line.Err
+		}
+		out = append(out, line)
+	}
+	return out, nil
+}
+
+// StreamLogs streams until the runtime closes the log stream or ctx is cancelled.
+func (s *Service) StreamLogs(ctx context.Context, instanceID string, opts podman.LogOptions) (<-chan LogLine, error) {
+	if instanceID == "" {
+		return nil, fmt.Errorf("instance id is required")
+	}
+	if _, ok := s.findInstance(instanceID); !ok {
+		return nil, fmt.Errorf("instance %q not found", instanceID)
+	}
+	lines, err := s.runtime.Logs(ctx, podman.ContainerID(instanceID), opts)
+	if err != nil {
+		return nil, err
+	}
+	out := make(chan LogLine, 128)
+	go func() {
+		defer close(out)
+		for line := range lines {
+			select {
+			case out <- LogLine{InstanceID: instanceID, Text: line.Text, Err: line.Err}:
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
+	return out, nil
 }
 
 func (s *Service) ListOperations(context.Context) ([]OperationSummary, error) {
@@ -358,6 +410,24 @@ func (s *Service) operationState() string {
 		}
 	}
 	return "idle"
+}
+
+func (s *Service) findInstance(instanceID string) (InstanceSummary, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, instance := range s.instances {
+		if instance.ID == instanceID {
+			return instance, true
+		}
+	}
+	return InstanceSummary{}, false
+}
+
+func formatTime(t time.Time) string {
+	if t.IsZero() {
+		return ""
+	}
+	return t.UTC().Format(time.RFC3339)
 }
 
 func (s *Service) tokenStore() tokens.Store {
