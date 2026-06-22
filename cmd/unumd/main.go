@@ -5,12 +5,16 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"os/signal"
+	"path/filepath"
+	"syscall"
 	"text/tabwriter"
 
 	"github.com/trippwill/unum/internal/config"
 	"github.com/trippwill/unum/internal/service"
 	"github.com/trippwill/unum/internal/setup"
 	"github.com/trippwill/unum/internal/sshkeys"
+	"github.com/trippwill/unum/internal/sshui"
 	"github.com/trippwill/unum/internal/version"
 )
 
@@ -186,7 +190,8 @@ func runSSH(args []string) error {
 func runSSHAddKey(args []string) error {
 	fs := flag.NewFlagSet("ssh add-key", flag.ContinueOnError)
 	fs.SetOutput(os.Stderr)
-	registry := fs.String("registry", sshkeys.DefaultRegistryPath, "authorized clients registry")
+	configPath := fs.String("config", config.DefaultPath, "config file path")
+	registry := fs.String("registry", "", "authorized clients registry")
 	name := fs.String("name", "", "client name")
 	role := fs.String("role", sshkeys.AdminRole, "client role")
 	if err := fs.Parse(args); err != nil {
@@ -199,7 +204,11 @@ func runSSHAddKey(args []string) error {
 	if err != nil {
 		return fmt.Errorf("read public key %s: %w", fs.Arg(0), err)
 	}
-	client, err := (sshkeys.Store{Path: *registry}).Add(*name, *role, key)
+	registryPath, err := sshRegistryPath(*configPath, *registry)
+	if err != nil {
+		return err
+	}
+	client, err := (sshkeys.Store{Path: registryPath}).Add(*name, *role, key)
 	if err != nil {
 		return err
 	}
@@ -210,14 +219,19 @@ func runSSHAddKey(args []string) error {
 func runSSHListKeys(args []string) error {
 	fs := flag.NewFlagSet("ssh list-keys", flag.ContinueOnError)
 	fs.SetOutput(os.Stderr)
-	registry := fs.String("registry", sshkeys.DefaultRegistryPath, "authorized clients registry")
+	configPath := fs.String("config", config.DefaultPath, "config file path")
+	registry := fs.String("registry", "", "authorized clients registry")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
 	if fs.NArg() != 0 {
 		return fmt.Errorf("ssh list-keys takes no positional arguments")
 	}
-	reg, err := (sshkeys.Store{Path: *registry}).Load()
+	registryPath, err := sshRegistryPath(*configPath, *registry)
+	if err != nil {
+		return err
+	}
+	reg, err := (sshkeys.Store{Path: registryPath}).Load()
 	if err != nil {
 		return err
 	}
@@ -236,14 +250,30 @@ func runSSHListKeys(args []string) error {
 func runSSHRevokeKey(args []string) error {
 	fs := flag.NewFlagSet("ssh revoke-key", flag.ContinueOnError)
 	fs.SetOutput(os.Stderr)
-	registry := fs.String("registry", sshkeys.DefaultRegistryPath, "authorized clients registry")
+	configPath := fs.String("config", config.DefaultPath, "config file path")
+	registry := fs.String("registry", "", "authorized clients registry")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
 	if fs.NArg() != 1 {
 		return fmt.Errorf("ssh revoke-key requires exactly one client id")
 	}
-	return (sshkeys.Store{Path: *registry}).Revoke(fs.Arg(0))
+	registryPath, err := sshRegistryPath(*configPath, *registry)
+	if err != nil {
+		return err
+	}
+	return (sshkeys.Store{Path: registryPath}).Revoke(fs.Arg(0))
+}
+
+func sshRegistryPath(configPath, override string) (string, error) {
+	if override != "" {
+		return override, nil
+	}
+	cfg, err := config.Load(configPath)
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(cfg.Storage.State, "ssh", "authorized-clients.json"), nil
 }
 
 func runServe(args []string) error {
@@ -265,7 +295,9 @@ func runServe(args []string) error {
 		fmt.Printf("config ok: %s\n", cfg.ServerName)
 		return nil
 	}
-	return fmt.Errorf("serve is not implemented yet")
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	return sshui.Serve(ctx, cfg, service.New(cfg, version.Version))
 }
 
 func usage() {
@@ -276,9 +308,9 @@ Usage:
   unumd profiles list [--config PATH]
   unumd profiles validate [--config PATH] ID
   unumd status [--config PATH]
-  unumd ssh add-key --name NAME [--role admin] PATH
-  unumd ssh list-keys
-  unumd ssh revoke-key ID
+  unumd ssh add-key [--config PATH] --name NAME [--role admin] PATH
+  unumd ssh list-keys [--config PATH]
+  unumd ssh revoke-key [--config PATH] ID
   unumd serve --config PATH --check
   unumd version
   unumd help`)

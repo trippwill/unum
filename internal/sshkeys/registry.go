@@ -15,8 +15,7 @@ import (
 )
 
 const (
-	DefaultRegistryPath = "/var/lib/unum/ssh/authorized-clients.json"
-	AdminRole           = "admin"
+	AdminRole = "admin"
 )
 
 type Client struct {
