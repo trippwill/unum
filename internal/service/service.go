@@ -17,11 +17,12 @@ import (
 )
 
 type Service struct {
-	cfg     config.Config
-	version string
-	runtime runtimeBackend
-	mu      sync.Mutex
-	nextOp  int
+	cfg           config.Config
+	version       string
+	runtime       runtimeBackend
+	mu            sync.Mutex
+	nextOp        int
+	activeProfile string
 	// ponytail: in-memory operation/instance state; persist when daemon restart recovery matters.
 	operations []OperationSummary
 	instances  map[string]InstanceSummary
@@ -126,13 +127,19 @@ func New(cfg config.Config, version string, opts ...Option) *Service {
 }
 
 func (s *Service) Status(context.Context) (Status, error) {
+	s.mu.Lock()
+	activeProfile := s.activeProfile
+	s.mu.Unlock()
+	if activeProfile == "" {
+		activeProfile = s.cfg.Inference.ActiveProfile
+	}
 	return Status{
 		ServerName:        s.cfg.ServerName,
 		Version:           s.version,
 		RuntimeBackend:    s.cfg.Runtime.Backend,
 		SSHAddress:        s.cfg.SSHTUI.Address,
 		InferenceEndpoint: inferenceEndpoint(s.cfg.Inference),
-		ActiveProfile:     s.cfg.Inference.ActiveProfile,
+		ActiveProfile:     activeProfile,
 		Operations:        s.operationState(),
 	}, nil
 }
@@ -176,6 +183,24 @@ func (s *Service) ValidateProfile(ctx context.Context, id string) (profile.Valid
 		}
 	}
 	return profile.ValidationResult{}, fmt.Errorf("profile %q not found", id)
+}
+
+func (s *Service) ActivateProfile(ctx context.Context, id string) error {
+	_, validation, err := profile.Find(s.cfg.Storage.Profiles, id)
+	if err != nil {
+		return err
+	}
+	if !validation.Valid {
+		reason := "profile invalid"
+		if len(validation.Errors) > 0 {
+			reason = validation.Errors[0]
+		}
+		return fmt.Errorf("profile %q is invalid: %s", id, reason)
+	}
+	s.mu.Lock()
+	s.activeProfile = id
+	s.mu.Unlock()
+	return nil
 }
 
 func (s *Service) StartProfile(ctx context.Context, id string) (OperationSummary, error) {

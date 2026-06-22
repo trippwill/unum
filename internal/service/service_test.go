@@ -91,6 +91,26 @@ args = ["serve"]
 	}
 }
 
+func TestActivateProfileUpdatesStatus(t *testing.T) {
+	dir := t.TempDir()
+	model := t.TempDir()
+	writeServiceProfile(t, filepath.Join(dir, "qwen.toml"), "qwen", model)
+	cfg := config.Default()
+	cfg.Storage.Profiles = dir
+	svc := New(cfg, "test-version")
+
+	if err := svc.ActivateProfile(context.Background(), "qwen"); err != nil {
+		t.Fatal(err)
+	}
+	status, err := svc.Status(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if status.ActiveProfile != "qwen" {
+		t.Fatalf("ActiveProfile = %q", status.ActiveProfile)
+	}
+}
+
 func TestStartAndStopProfileRecordsOperationsAndInstance(t *testing.T) {
 	dir := t.TempDir()
 	model := t.TempDir()
