@@ -1,0 +1,40 @@
+id = "qwen3-small-cpu"
+name = "Qwen3 Small CPU"
+description = "CPU smoke-test profile. Update image, model path, and args for your server."
+
+[runtime]
+backend = "podman"
+
+[image]
+ref = "docker.io/example/unum-llm-cpu:0.1.0"
+
+[model]
+path = "/var/lib/unum/models/Qwen/Qwen3-0.6B"
+
+[server]
+kind = "openai-compatible"
+host = "127.0.0.1"
+port = 18080
+health_path = "/health"
+
+[resources]
+memory = "32g"
+memory_swap = "32g"
+threads = 8
+
+[mounts.models]
+host = "/var/lib/unum/models"
+container = "/models"
+read_only = true
+
+[container]
+network = "host"
+devices = []
+
+args = [
+  "vllm",
+  "serve",
+  "/models/Qwen/Qwen3-0.6B",
+  "--host", "127.0.0.1",
+  "--port", "18080"
+]

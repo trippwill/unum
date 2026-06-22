@@ -37,6 +37,12 @@ mise run precommit
 Every commit should be buildable, have passing tests, use Conventional Commits,
 and get a rubber duck review first.
 
+## Operations
+
+See [`docs/operations.md`](docs/operations.md) for rootful Fedora+Podman install,
+systemd setup, config/profile examples, SSH access, and inference token smoke
+checks.
+
 ## Product brief
 
 See [`product/unum-v0-product-brief.md`](product/unum-v0-product-brief.md).

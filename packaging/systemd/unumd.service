@@ -1,0 +1,15 @@
+[Unit]
+Description=Unum trusted-server inference manager
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+Group=root
+ExecStart=/usr/local/bin/unumd serve --config /etc/unum/unumd.toml
+Restart=on-failure
+RestartSec=5s
+
+[Install]
+WantedBy=multi-user.target

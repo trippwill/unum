@@ -1,0 +1,26 @@
+server_name = "unum"
+
+[ssh_tui]
+enabled = true
+address = ":2222"
+host_key = "/var/lib/unum/ssh/host_ed25519"
+
+[inference]
+enabled = true
+address = "127.0.0.1:8770"
+base_path = "/openai/v1"
+active_profile = ""
+tls_cert = ""
+tls_key = ""
+dev_insecure_http = true
+
+[runtime]
+backend = "podman"
+
+[storage]
+state = "/var/lib/unum"
+profiles = "/var/lib/unum/profiles"
+models = "/var/lib/unum/models"
+
+[logs]
+retain_days = 14
