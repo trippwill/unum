@@ -30,6 +30,8 @@ func run(args []string) error {
 	switch args[0] {
 	case "init":
 		return runInit(args[1:])
+	case "profiles":
+		return runProfiles(args[1:])
 	case "status":
 		return runStatus(args[1:])
 	case "ssh":
@@ -91,6 +93,78 @@ func runStatus(args []string) error {
 	fmt.Printf("Active: %s\n", status.ActiveProfile)
 	fmt.Printf("Operations: %s\n", status.Operations)
 	return nil
+}
+
+func runProfiles(args []string) error {
+	if len(args) == 0 {
+		return fmt.Errorf("profiles subcommand is required")
+	}
+	switch args[0] {
+	case "list":
+		return runProfilesList(args[1:])
+	case "validate":
+		return runProfilesValidate(args[1:])
+	default:
+		return fmt.Errorf("unknown profiles subcommand %q", args[0])
+	}
+}
+
+func runProfilesList(args []string) error {
+	fs := flag.NewFlagSet("profiles list", flag.ContinueOnError)
+	fs.SetOutput(os.Stderr)
+	configPath := fs.String("config", config.DefaultPath, "config file path")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if fs.NArg() != 0 {
+		return fmt.Errorf("profiles list takes no positional arguments")
+	}
+	cfg, err := config.Load(*configPath)
+	if err != nil {
+		return err
+	}
+	profiles, err := service.New(cfg, version.Version).ListProfiles(context.Background())
+	if err != nil {
+		return err
+	}
+	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+	fmt.Fprintln(w, "ID\tVALID\tSTATE\tREASON")
+	for _, p := range profiles {
+		valid := "invalid"
+		if p.Valid {
+			valid = "valid"
+		}
+		fmt.Fprintf(w, "%s\t%s\t%s\t%s\n", p.ID, valid, p.State, p.Reason)
+	}
+	return w.Flush()
+}
+
+func runProfilesValidate(args []string) error {
+	fs := flag.NewFlagSet("profiles validate", flag.ContinueOnError)
+	fs.SetOutput(os.Stderr)
+	configPath := fs.String("config", config.DefaultPath, "config file path")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if fs.NArg() != 1 {
+		return fmt.Errorf("profiles validate requires exactly one profile id")
+	}
+	cfg, err := config.Load(*configPath)
+	if err != nil {
+		return err
+	}
+	result, err := service.New(cfg, version.Version).ValidateProfile(context.Background(), fs.Arg(0))
+	if err != nil {
+		return err
+	}
+	if result.Valid {
+		fmt.Println("valid")
+		return nil
+	}
+	for _, validationErr := range result.Errors {
+		fmt.Println(validationErr)
+	}
+	return fmt.Errorf("profile %q is invalid", fs.Arg(0))
 }
 
 func runSSH(args []string) error {
@@ -199,6 +273,8 @@ func usage() {
 
 Usage:
   unumd init [--config PATH] [--state PATH] [--server-name NAME]
+  unumd profiles list [--config PATH]
+  unumd profiles validate [--config PATH] ID
   unumd status [--config PATH]
   unumd ssh add-key --name NAME [--role admin] PATH
   unumd ssh list-keys

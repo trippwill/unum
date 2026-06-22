@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/trippwill/unum/internal/config"
+	"github.com/trippwill/unum/internal/profile"
 )
 
 type Service struct {
@@ -73,7 +74,38 @@ func (s *Service) Status(context.Context) (Status, error) {
 }
 
 func (s *Service) ListProfiles(context.Context) ([]ProfileSummary, error) {
-	return []ProfileSummary{}, nil
+	summaries, err := profile.LoadDir(s.cfg.Storage.Profiles)
+	if err != nil {
+		return nil, err
+	}
+	profiles := make([]ProfileSummary, 0, len(summaries))
+	for _, summary := range summaries {
+		reason := ""
+		if len(summary.Validation.Errors) > 0 {
+			reason = summary.Validation.Errors[0]
+		}
+		profiles = append(profiles, ProfileSummary{
+			ID:     summary.ID,
+			Name:   summary.Name,
+			Valid:  summary.Validation.Valid,
+			State:  "stopped",
+			Reason: reason,
+		})
+	}
+	return profiles, nil
+}
+
+func (s *Service) ValidateProfile(ctx context.Context, id string) (profile.ValidationResult, error) {
+	profiles, err := profile.LoadDir(s.cfg.Storage.Profiles)
+	if err != nil {
+		return profile.ValidationResult{}, err
+	}
+	for _, summary := range profiles {
+		if summary.ID == id {
+			return summary.Validation, nil
+		}
+	}
+	return profile.ValidationResult{}, fmt.Errorf("profile %q not found", id)
 }
 
 func (s *Service) ListInstances(context.Context) ([]InstanceSummary, error) {

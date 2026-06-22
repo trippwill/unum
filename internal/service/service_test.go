@@ -2,6 +2,8 @@ package service
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/trippwill/unum/internal/config"
@@ -42,5 +44,44 @@ func TestStatusOmitsDisabledInferenceEndpoint(t *testing.T) {
 	}
 	if got.InferenceEndpoint != "" {
 		t.Fatalf("InferenceEndpoint = %q", got.InferenceEndpoint)
+	}
+}
+
+func TestListProfilesUsesConfiguredDirectory(t *testing.T) {
+	dir := t.TempDir()
+	model := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "qwen.toml"), []byte(`id = "qwen"
+name = "Qwen"
+
+[runtime]
+backend = "podman"
+
+[image]
+ref = "example"
+
+[model]
+path = "`+model+`"
+
+[server]
+kind = "openai-compatible"
+host = "127.0.0.1"
+port = 18080
+health_path = "/health"
+
+[container]
+network = "host"
+args = ["serve"]
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg := config.Default()
+	cfg.Storage.Profiles = dir
+	got, err := New(cfg, "test-version").ListProfiles(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0].ID != "qwen" || !got[0].Valid {
+		t.Fatalf("profiles = %+v", got)
 	}
 }
