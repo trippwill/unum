@@ -50,6 +50,8 @@ func NewHandler(cfg config.InferenceConfig, control Control, validator Validator
 			req.URL.Path = joinPath(target.Path, strings.TrimPrefix(r.URL.Path, basePath))
 			req.URL.RawQuery = r.URL.RawQuery
 			req.Host = target.Host
+			req.Header.Del("Authorization")
+			req.Header.Del("Proxy-Authorization")
 		}
 		proxy.ServeHTTP(w, r)
 	})

@@ -17,6 +17,9 @@ func TestHandlerProxiesAuthorizedRequestToActiveInstance(t *testing.T) {
 		if r.URL.Path != "/chat/completions" {
 			t.Fatalf("upstream path = %q", r.URL.Path)
 		}
+		if got := r.Header.Get("Authorization"); got != "" {
+			t.Fatalf("upstream received Authorization header %q", got)
+		}
 		w.WriteHeader(http.StatusTeapot)
 	}))
 	defer upstream.Close()
