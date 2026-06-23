@@ -2,7 +2,6 @@ package podman
 
 import (
 	"bufio"
-	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -163,19 +162,17 @@ func (b Backend) Logs(ctx context.Context, id ContainerID, opts LogOptions) (<-c
 		args = append(args, "--follow")
 	}
 	args = append(args, string(id))
-
 	cmd := exec.CommandContext(ctx, b.command(), args...)
-	stdout, err := cmd.StdoutPipe()
-	if err != nil {
-		return nil, fmt.Errorf("open podman logs stdout: %w", err)
-	}
-	stderr := &bytes.Buffer{}
-	cmd.Stderr = stderr
+	output, outputWriter := io.Pipe()
+	cmd.Stdout = outputWriter
+	cmd.Stderr = outputWriter
 	if err := cmd.Start(); err != nil {
+		_ = output.Close()
+		_ = outputWriter.Close()
 		return nil, fmt.Errorf("start podman logs: %w", err)
 	}
 	lines := make(chan LogLine, 128)
-	go scanLogs(ctx, stdout, lines, cmd, stderr)
+	go scanLogs(ctx, output, outputWriter, lines, cmd)
 	return lines, nil
 }
 
@@ -256,31 +253,32 @@ func (b Backend) command() string {
 	return b.Command
 }
 
-func scanLogs(ctx context.Context, stdout io.Reader, lines chan<- LogLine, cmd *exec.Cmd, stderr *bytes.Buffer) {
+func scanLogs(ctx context.Context, output *io.PipeReader, outputWriter *io.PipeWriter, lines chan<- LogLine, cmd *exec.Cmd) {
 	defer close(lines)
-	waited := false
-	wait := func() error {
-		waited = true
-		return cmd.Wait()
-	}
-	defer func() {
-		if !waited {
-			_ = cmd.Wait()
-		}
+	waitErr := make(chan error, 1)
+	go func() {
+		err := cmd.Wait()
+		_ = outputWriter.Close()
+		waitErr <- err
 	}()
-	scanner := bufio.NewScanner(stdout)
+	defer func() {
+		_ = output.Close()
+	}()
+	lastLine := ""
+	scanner := bufio.NewScanner(output)
 	for scanner.Scan() {
+		lastLine = scanner.Text()
 		select {
-		case lines <- LogLine{Text: scanner.Text()}:
+		case lines <- LogLine{Text: lastLine}:
 		case <-ctx.Done():
 			return
 		}
 	}
-	if err := scanner.Err(); err != nil {
+	if err := scanner.Err(); err != nil && ctx.Err() == nil {
 		lines <- LogLine{Err: fmt.Errorf("read podman logs: %w", err)}
 	}
-	if err := wait(); err != nil {
-		detail := strings.TrimSpace(stderr.String())
+	if err := <-waitErr; err != nil && ctx.Err() == nil {
+		detail := strings.TrimSpace(lastLine)
 		if detail != "" {
 			err = fmt.Errorf("%w: %s", err, detail)
 		}

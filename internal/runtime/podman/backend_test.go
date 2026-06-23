@@ -2,6 +2,8 @@ package podman
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"reflect"
 	"testing"
 
@@ -93,6 +95,29 @@ func TestInspectParsesStatus(t *testing.T) {
 	}
 	if got.ID != "abc" || got.Name != "unum-qwen" || got.State != "running" || got.Health != "healthy" || got.Started.IsZero() {
 		t.Fatalf("status = %+v", got)
+	}
+}
+
+func TestLogsReadsStdoutAndStderr(t *testing.T) {
+	script := filepath.Join(t.TempDir(), "podman")
+	if err := os.WriteFile(script, []byte("#!/bin/sh\nprintf 'stdout log\\n'\nprintf 'stderr log\\n' >&2\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	lines, err := (Backend{Command: script}).Logs(context.Background(), "container-1", LogOptions{Tail: 2})
+	if err != nil {
+		t.Fatal(err)
+	}
+	seen := map[string]bool{}
+	for line := range lines {
+		if line.Err != nil {
+			t.Fatal(line.Err)
+		}
+		seen[line.Text] = true
+	}
+	for _, want := range []string{"stdout log", "stderr log"} {
+		if !seen[want] {
+			t.Fatalf("logs missing %q: %#v", want, seen)
+		}
 	}
 }
 
