@@ -4,6 +4,7 @@
 - Use Conventional Commits.
 - Every commit must build and pass tests.
 - Get a rubber duck review before committing.
+- Do not push without explicit user sign-off.
 - Keep `unumd` rootful for v0: root-owned `/etc/unum` and `/var/lib/unum`, rootful Podman.
 - Keep hostnames, IPs, model paths, TLS paths, and device mappings configurable.
 - Prefer clean architecture boundaries, but do not add future-only interfaces.
