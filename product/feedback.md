@@ -12,6 +12,14 @@ Impact: onboarding
 Decision: do now
 Action: Add a small `mise run dev-update -- BRANCH` helper for clean-worktree branch pull, CI gate, install, init, enable, and service restart on a test server.
 
+### Profile lifecycle activation model
+
+Feedback: "revisit the profile lifecycle model - is there value in keeping activation seperate from starting/stopping?"
+Type: question
+Impact: v0 behavior
+Decision: track
+Action: Before the next TUI/runtime-control slice, decide whether v0 needs separate activate/start/stop actions or whether starting a profile should make it active by default.
+
 ### Configurable validation and defaults
 
 Feedback: "default max memory should be configuration. probably others"
@@ -83,10 +91,11 @@ Action: Decide whether `x-unum.models` should distinguish files, directories, or
 
 Feedback: "permissions are too tight on models for my user to cd or ls it"
 Follow-up: "it's actually the parent /var/lib/unum that had the tight permissions"
+Follow-up: "for permissions, we need a decision on whether we intend to promote a service user model for rootful"
 Type: bug
 Impact: onboarding
 Decision: track
-Action: Revisit init-created `/var/lib/unum` and model directory permissions or documented operator group ownership so admins can traverse, inspect, and populate models without weakening rootful runtime assumptions.
+Action: Decide whether rootful v0 should stay root-owned with operator group access, or promote a service-user model for daemon/state ownership; then update init-created `/var/lib/unum` permissions and docs accordingly.
 
 ## Promoted to issues
 
