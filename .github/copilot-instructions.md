@@ -38,6 +38,7 @@ Default rootful paths are `/etc/unum/unumd.toml` and `/var/lib/unum`, but hostna
 - Get rubber-duck review before committing.
 - Get security review for security-sensitive changes.
 - Do not push without explicit user sign-off.
+- Use `/docs` only for user-facing docs; keep ADRs, briefs, feedback, and other product docs under `/product`.
 - Keep clean architecture at package boundaries; avoid future-only interfaces.
 - Apply Ponytail/YAGNI inside boundaries: stdlib/native first, minimal dependencies, no speculative backends.
 - Treat product-owner feedback as durable input: capture it, classify it, and map it to active release goals before acting.

@@ -7,6 +7,7 @@
 - Do not push without explicit user sign-off.
 - Keep `unumd` rootful for v0: root-owned `/etc/unum` and `/var/lib/unum`, rootful Podman.
 - Keep hostnames, IPs, model paths, TLS paths, and device mappings configurable.
+- Use `/docs` only for user-facing docs; keep ADRs, briefs, feedback, and other product docs under `/product`.
 - Prefer clean architecture boundaries, but do not add future-only interfaces.
 - Ponytail rule: delete/stdlib/native first; add dependencies only when they remove real code.
 
