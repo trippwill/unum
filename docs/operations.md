@@ -17,15 +17,15 @@ Initialize root-owned config and state:
 sudo unumd init --config /etc/unum/unumd.toml --state /var/lib/unum --server-name unum
 ```
 
-Add an SSH control-plane key:
+Import the admin user's existing authorized SSH keys:
 
 ```bash
-sudo unumd ssh add-key --config /etc/unum/unumd.toml --name laptop /home/YOU/.ssh/authorized_keys
+sudo unumd ssh add-authorized-keys --config /etc/unum/unumd.toml --name admin /home/YOU/.ssh/authorized_keys
 ```
 
-`add-key` accepts a `.pub` file or an `authorized_keys` file containing exactly
-one public key. If `authorized_keys` has multiple keys, copy the wanted line to
-a temporary file and add that.
+This registers each non-comment key as `admin-1`, `admin-2`, etc., and skips
+keys already registered. To register one key only, use `ssh add-key` with a
+single-key `.pub` file.
 
 Start the daemon:
 

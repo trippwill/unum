@@ -83,6 +83,65 @@ func (s Store) Add(name, role string, publicKey []byte) (Client, error) {
 	return client, nil
 }
 
+func (s Store) AddAuthorizedKeys(name, role string, publicKeys []byte) ([]Client, int, error) {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return nil, 0, fmt.Errorf("name is required")
+	}
+	if role == "" {
+		role = AdminRole
+	}
+	if role != AdminRole {
+		return nil, 0, fmt.Errorf("unsupported role %q", role)
+	}
+	normalized, err := normalizePublicKeys(publicKeys)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	// ponytail: whole-file registry write; add file locking if concurrent admins matter.
+	reg, err := s.Load()
+	if err != nil {
+		return nil, 0, err
+	}
+	active := map[string]bool{}
+	for _, client := range reg.Clients {
+		if !client.Revoked {
+			active[client.PublicKey] = true
+		}
+	}
+
+	var added []Client
+	skipped := 0
+	for i, key := range normalized {
+		if active[key] {
+			skipped++
+			continue
+		}
+		id, err := randomID()
+		if err != nil {
+			return nil, 0, err
+		}
+		client := Client{
+			ID:        id,
+			Name:      fmt.Sprintf("%s-%d", name, i+1),
+			PublicKey: key,
+			Role:      role,
+			CreatedAt: s.now(),
+		}
+		reg.Clients = append(reg.Clients, client)
+		active[key] = true
+		added = append(added, client)
+	}
+	if len(added) == 0 {
+		return added, skipped, nil
+	}
+	if err := s.Save(reg); err != nil {
+		return nil, 0, err
+	}
+	return added, skipped, nil
+}
+
 func (s Store) Revoke(id string) error {
 	if strings.TrimSpace(id) == "" {
 		return fmt.Errorf("client id is required")
@@ -164,6 +223,17 @@ func (s Store) Save(reg Registry) error {
 }
 
 func normalizePublicKey(data []byte) (string, error) {
+	keys, err := normalizePublicKeys(data)
+	if err != nil {
+		return "", err
+	}
+	if len(keys) != 1 {
+		return "", fmt.Errorf("public key file must contain exactly one key, found %d", len(keys))
+	}
+	return keys[0], nil
+}
+
+func normalizePublicKeys(data []byte) ([]string, error) {
 	var keys []ssh.PublicKey
 	for _, line := range bytes.Split(data, []byte("\n")) {
 		line = bytes.TrimSpace(line)
@@ -172,17 +242,21 @@ func normalizePublicKey(data []byte) (string, error) {
 		}
 		key, _, _, rest, err := ssh.ParseAuthorizedKey(line)
 		if err != nil {
-			return "", fmt.Errorf("parse public key: %w", err)
+			return nil, fmt.Errorf("parse public key: %w", err)
 		}
 		if len(bytes.TrimSpace(rest)) != 0 {
-			return "", fmt.Errorf("public key line has trailing data")
+			return nil, fmt.Errorf("public key line has trailing data")
 		}
 		keys = append(keys, key)
 	}
-	if len(keys) != 1 {
-		return "", fmt.Errorf("public key file must contain exactly one key, found %d", len(keys))
+	if len(keys) == 0 {
+		return nil, fmt.Errorf("public key file contains no keys")
 	}
-	return strings.TrimSpace(string(ssh.MarshalAuthorizedKey(keys[0]))), nil
+	normalized := make([]string, 0, len(keys))
+	for _, key := range keys {
+		normalized = append(normalized, strings.TrimSpace(string(ssh.MarshalAuthorizedKey(key))))
+	}
+	return normalized, nil
 }
 
 func (s Store) now() time.Time {

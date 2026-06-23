@@ -72,6 +72,38 @@ func TestStoreRejectsMultipleAuthorizedKeys(t *testing.T) {
 	}
 }
 
+func TestStoreAddsAuthorizedKeysFile(t *testing.T) {
+	store := Store{Path: filepath.Join(t.TempDir(), "authorized-clients.json")}
+	keys := append([]byte("# admin keys\n"), testAuthorizedKey(t)...)
+	keys = append(keys, testAuthorizedKey(t)...)
+
+	clients, skipped, err := store.AddAuthorizedKeys("admin", AdminRole, keys)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if skipped != 0 || len(clients) != 2 {
+		t.Fatalf("clients=%d skipped=%d", len(clients), skipped)
+	}
+	if clients[0].Name != "admin-1" || clients[1].Name != "admin-2" {
+		t.Fatalf("unexpected names: %+v", clients)
+	}
+}
+
+func TestStoreAddAuthorizedKeysSkipsDuplicates(t *testing.T) {
+	store := Store{Path: filepath.Join(t.TempDir(), "authorized-clients.json")}
+	key := testAuthorizedKey(t)
+	if _, err := store.Add("laptop", AdminRole, key); err != nil {
+		t.Fatal(err)
+	}
+	clients, skipped, err := store.AddAuthorizedKeys("admin", AdminRole, key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if skipped != 1 || len(clients) != 0 {
+		t.Fatalf("clients=%d skipped=%d", len(clients), skipped)
+	}
+}
+
 func TestStoreUsesPrivateRegistryPermissions(t *testing.T) {
 	store := Store{Path: filepath.Join(t.TempDir(), "authorized-clients.json")}
 	if _, err := store.Add("laptop", AdminRole, testAuthorizedKey(t)); err != nil {

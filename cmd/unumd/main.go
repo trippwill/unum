@@ -266,6 +266,8 @@ func runSSH(args []string) error {
 		return fmt.Errorf("ssh subcommand is required")
 	}
 	switch args[0] {
+	case "add-authorized-keys":
+		return runSSHAddAuthorizedKeys(args[1:])
 	case "add-key":
 		return runSSHAddKey(args[1:])
 	case "list-keys":
@@ -303,6 +305,40 @@ func runSSHAddKey(args []string) error {
 		return err
 	}
 	fmt.Println(client.ID)
+	return nil
+}
+
+func runSSHAddAuthorizedKeys(args []string) error {
+	fs := flag.NewFlagSet("ssh add-authorized-keys", flag.ContinueOnError)
+	fs.SetOutput(os.Stderr)
+	configPath := fs.String("config", config.DefaultPath, "config file path")
+	registry := fs.String("registry", "", "authorized clients registry")
+	name := fs.String("name", "", "client name prefix")
+	role := fs.String("role", sshkeys.AdminRole, "client role")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if fs.NArg() != 1 {
+		return fmt.Errorf("ssh add-authorized-keys requires exactly one authorized_keys path")
+	}
+	keys, err := os.ReadFile(fs.Arg(0))
+	if err != nil {
+		return fmt.Errorf("read authorized_keys %s: %w", fs.Arg(0), err)
+	}
+	registryPath, err := sshRegistryPath(*configPath, *registry)
+	if err != nil {
+		return err
+	}
+	clients, skipped, err := (sshkeys.Store{Path: registryPath}).AddAuthorizedKeys(*name, *role, keys)
+	if err != nil {
+		return err
+	}
+	for _, client := range clients {
+		fmt.Println(client.ID)
+	}
+	if skipped > 0 {
+		fmt.Fprintf(os.Stderr, "skipped already registered keys: %d\n", skipped)
+	}
 	return nil
 }
 
@@ -419,6 +455,7 @@ Usage:
   unumd profiles list [--config PATH]
   unumd profiles validate [--config PATH] ID
   unumd status [--config PATH]
+  unumd ssh add-authorized-keys [--config PATH] --name NAME [--role admin] PATH
   unumd ssh add-key [--config PATH] --name NAME [--role admin] PATH
   unumd ssh list-keys [--config PATH]
   unumd ssh revoke-key [--config PATH] ID
