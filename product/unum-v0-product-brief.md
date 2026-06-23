@@ -437,50 +437,32 @@ Do not let inference tokens auto-start stopped profiles in v0.
 
 ## Profile model
 
-A v0 profile file should be simple and explicit.
+A v0 profile file uses Compose-compatible YAML with Unum metadata in `x-unum`.
 
 Example:
 
-```toml
-id = "qwen3-small-cpu"
-name = "Qwen3 Small CPU"
-description = "Small CPU profile for smoke testing and basic local inference."
+```yaml
+services:
+  qwen3-small-cpu:
+    image: ghcr.io/ggml-org/llama.cpp:server
+    container_name: unum-qwen3-small-cpu
+    network_mode: host
+    volumes:
+      - /laser/ai/models:/models:ro
+    mem_limit: 4g
+    memswap_limit: 4g
+    command: ["--model", "/models/Qwen3-0.6B-Q4_K_M.gguf", "--host", "127.0.0.1", "--port", "18080"]
 
-[runtime]
-backend = "podman"
-
-[image]
-ref = "docker.io/example/unum-llm-cpu:0.1.0"
-
-[model]
-path = "/laser/ai/models/Qwen/Qwen3-0.6B"
-
-[server]
-kind = "openai-compatible"
-host = "127.0.0.1"
-port = 18080
-health_path = "/health"
-
-[resources]
-memory = "12g"
-memory_swap = "16g"
-threads = 8
-
-[mounts.models]
-host = "/laser/ai/models"
-container = "/models"
-read_only = true
-
-[container]
-network = "host"
-
-args = [
-  "vllm",
-  "serve",
-  "/models/Qwen/Qwen3-0.6B",
-  "--host", "127.0.0.1",
-  "--port", "18080"
-]
+x-unum:
+  id: qwen3-small-cpu
+  name: Qwen3 Small CPU
+  endpoints:
+    openai:
+      service: qwen3-small-cpu
+      url: http://127.0.0.1:18080/v1
+      health: /health
+  models:
+    - /laser/ai/models/Qwen3-0.6B-Q4_K_M.gguf
 ```
 
 For the `unum` server, later XPU profiles can use the same structure with devices added.
@@ -575,8 +557,8 @@ For rootful server daemon:
 /var/lib/unum/
   ├── state.db
   ├── profiles/
-  │   ├── qwen3-small-cpu.toml
-  │   └── qwen3-coder-xpu.toml
+  │   ├── qwen3-small-cpu.yaml
+  │   └── qwen3-coder-xpu.yaml
   ├── ssh/
   │   ├── host_ed25519
   │   └── authorized-clients.json
@@ -714,7 +696,7 @@ opens a TUI showing daemon status.
 
 Deliver:
 
-- load profile TOML files;
+- load profile YAML files;
 - list profiles in TUI;
 - validate required fields;
 - show validation errors.

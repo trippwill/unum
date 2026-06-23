@@ -1,0 +1,21 @@
+services:
+  qwen3-small-cpu:
+    image: ghcr.io/ggml-org/llama.cpp:server
+    container_name: unum-qwen3-small-cpu
+    network_mode: host
+    volumes:
+      - /var/lib/unum/models:/models:ro
+    mem_limit: 4g
+    memswap_limit: 4g
+    command: ["--model", "/models/Qwen3-0.6B-Q4_K_M.gguf", "--host", "127.0.0.1", "--port", "18080"]
+
+x-unum:
+  id: qwen3-small-cpu
+  name: Qwen3 Small CPU
+  endpoints:
+    openai:
+      service: qwen3-small-cpu
+      url: http://127.0.0.1:18080/v1
+      health: /health
+  models:
+    - /var/lib/unum/models/Qwen3-0.6B-Q4_K_M.gguf

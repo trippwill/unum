@@ -3,6 +3,7 @@ package setup
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"golang.org/x/crypto/ssh"
@@ -27,8 +28,9 @@ func TestInitCreatesConfigStateHostKeyAndProfile(t *testing.T) {
 		t.Fatalf("ServerName = %q", cfg.ServerName)
 	}
 
+	profilePath := filepath.Join(state, "profiles", "qwen3-small-cpu.yaml")
 	for _, path := range []string{
-		filepath.Join(state, "profiles", "qwen3-small-cpu.toml"),
+		profilePath,
 		filepath.Join(state, "ssh", "host_ed25519"),
 		filepath.Join(state, "tokens"),
 		filepath.Join(state, "logs"),
@@ -36,6 +38,15 @@ func TestInitCreatesConfigStateHostKeyAndProfile(t *testing.T) {
 		if _, err := os.Stat(path); err != nil {
 			t.Fatalf("expected %s: %v", path, err)
 		}
+	}
+
+	profile, err := os.ReadFile(profilePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	modelsDir := filepath.Join(state, "models")
+	if !strings.Contains(string(profile), modelsDir+":/models:ro") {
+		t.Fatalf("profile does not use configured models directory %q", modelsDir)
 	}
 
 	key, err := os.ReadFile(filepath.Join(state, "ssh", "host_ed25519"))

@@ -1,8 +1,10 @@
 package setup
 
 import (
+	"bytes"
 	"crypto/ed25519"
 	"crypto/rand"
+	_ "embed"
 	"encoding/pem"
 	"fmt"
 	"os"
@@ -12,6 +14,11 @@ import (
 
 	"github.com/trippwill/unum/internal/config"
 )
+
+const starterProfileDefaultModelsDir = "/var/lib/unum/models"
+
+//go:embed starter_profiles/qwen3-small-cpu.yaml
+var starterProfile []byte
 
 type InitOptions struct {
 	ConfigPath string
@@ -67,7 +74,7 @@ func Init(opts InitOptions) error {
 	if err := writeHostKeyIfMissing(cfg.SSHTUI.HostKey); err != nil {
 		return err
 	}
-	if err := writeProfileIfMissing(filepath.Join(cfg.Storage.Profiles, "qwen3-small-cpu.toml"), cfg); err != nil {
+	if err := writeProfileIfMissing(filepath.Join(cfg.Storage.Profiles, "qwen3-small-cpu.yaml"), cfg); err != nil {
 		return err
 	}
 	return nil
@@ -110,47 +117,8 @@ func writeHostKeyIfMissing(path string) error {
 }
 
 func writeProfileIfMissing(path string, cfg config.Config) error {
-	profile := fmt.Sprintf(`id = "qwen3-small-cpu"
-name = "Qwen3 Small CPU"
-description = "CPU smoke-test profile. Update image, model path, and args for your server."
-
-[runtime]
-backend = "podman"
-
-[image]
-ref = "docker.io/example/unum-llm-cpu:0.1.0"
-
-[model]
-path = "%s/Qwen/Qwen3-0.6B"
-
-[server]
-kind = "openai-compatible"
-host = "127.0.0.1"
-port = 18080
-health_path = "/health"
-
-[resources]
-memory = "32g"
-memory_swap = "32g"
-threads = 8
-
-[mounts.models]
-host = "%s"
-container = "/models"
-read_only = true
-
-[container]
-network = "host"
-
-args = [
-  "vllm",
-  "serve",
-  "/models/Qwen/Qwen3-0.6B",
-  "--host", "127.0.0.1",
-  "--port", "18080"
-]
-`, cfg.Storage.Models, cfg.Storage.Models)
-	return writeFileIfMissing(path, []byte(profile), 0o644)
+	profile := bytes.ReplaceAll(starterProfile, []byte(starterProfileDefaultModelsDir), []byte(cfg.Storage.Models))
+	return writeFileIfMissing(path, profile, 0o644)
 }
 
 func writeFileIfMissing(path string, data []byte, perm os.FileMode) error {

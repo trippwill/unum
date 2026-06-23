@@ -47,6 +47,38 @@ func TestHandlerProxiesAuthorizedRequestToActiveInstance(t *testing.T) {
 	}
 }
 
+func TestHandlerPrependsProfileEndpointPath(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/chat/completions" {
+			t.Fatalf("upstream path = %q", r.URL.Path)
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer upstream.Close()
+	store := tokens.Store{Path: filepath.Join(t.TempDir(), "tokens.json")}
+	created, err := store.Create("editor")
+	if err != nil {
+		t.Fatal(err)
+	}
+	control := fakeControl{
+		status: service.Status{ActiveProfile: "qwen"},
+		instances: []service.InstanceSummary{{
+			ProfileID: "qwen",
+			State:     "running",
+			Endpoint:  upstream.URL + "/v1",
+		}},
+	}
+	req := httptest.NewRequest(http.MethodPost, "/openai/v1/chat/completions", nil)
+	req.Header.Set("Authorization", "Bearer "+created.Raw)
+	rec := httptest.NewRecorder()
+
+	NewHandler(config.Default().Inference, control, store).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("status = %d body = %q", rec.Code, rec.Body.String())
+	}
+}
+
 func TestHandlerRejectsMissingToken(t *testing.T) {
 	rec := httptest.NewRecorder()
 	NewHandler(config.Default().Inference, fakeControl{}, tokens.Store{Path: filepath.Join(t.TempDir(), "tokens.json")}).

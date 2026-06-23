@@ -10,61 +10,50 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/pelletier/go-toml/v2"
+	"gopkg.in/yaml.v3"
 )
 
 const MaxInferenceMemoryBytes = 32 * 1024 * 1024 * 1024
 
 type Profile struct {
-	ID          string           `toml:"id"`
-	Name        string           `toml:"name"`
-	Description string           `toml:"description"`
-	Runtime     Runtime          `toml:"runtime"`
-	Image       Image            `toml:"image"`
-	Model       Model            `toml:"model"`
-	Server      Server           `toml:"server"`
-	Resources   Resources        `toml:"resources"`
-	Mounts      map[string]Mount `toml:"mounts"`
-	Container   Container        `toml:"container"`
-	Path        string           `toml:"-"`
+	Version  string             `yaml:"version,omitempty"`
+	Services map[string]Service `yaml:"services"`
+	Unum     UnumMetadata       `yaml:"x-unum"`
+	ID       string             `yaml:"-"`
+	Name     string             `yaml:"-"`
+	Path     string             `yaml:"-"`
 }
 
-type Runtime struct {
-	Backend string `toml:"backend"`
+type Service struct {
+	Image         string            `yaml:"image"`
+	ContainerName string            `yaml:"container_name"`
+	NetworkMode   string            `yaml:"network_mode"`
+	Devices       []string          `yaml:"devices"`
+	Volumes       []string          `yaml:"volumes"`
+	Environment   map[string]string `yaml:"environment"`
+	MemLimit      string            `yaml:"mem_limit"`
+	MemswapLimit  string            `yaml:"memswap_limit"`
+	ShmSize       string            `yaml:"shm_size"`
+	SecurityOpt   []string          `yaml:"security_opt"`
+	Entrypoint    string            `yaml:"entrypoint"`
+	Command       StringList        `yaml:"command"`
 }
 
-type Image struct {
-	Ref string `toml:"ref"`
+type UnumMetadata struct {
+	ID              string              `yaml:"id"`
+	Name            string              `yaml:"name"`
+	Endpoints       map[string]Endpoint `yaml:"endpoints"`
+	Models          []string            `yaml:"models"`
+	RequiredDevices []string            `yaml:"required_devices"`
 }
 
-type Model struct {
-	Path string `toml:"path"`
+type Endpoint struct {
+	Service string `yaml:"service"`
+	URL     string `yaml:"url"`
+	Health  string `yaml:"health"`
 }
 
-type Server struct {
-	Kind       string `toml:"kind"`
-	Host       string `toml:"host"`
-	Port       int    `toml:"port"`
-	HealthPath string `toml:"health_path"`
-}
-
-type Resources struct {
-	Memory     string `toml:"memory"`
-	MemorySwap string `toml:"memory_swap"`
-	Threads    int    `toml:"threads"`
-}
-
-type Mount struct {
-	Host      string `toml:"host"`
-	Container string `toml:"container"`
-	ReadOnly  bool   `toml:"read_only"`
-}
-
-type Container struct {
-	Network string   `toml:"network"`
-	Devices []string `toml:"devices"`
-	Args    []string `toml:"args"`
-}
+type StringList []string
 
 type Summary struct {
 	ID         string
@@ -84,9 +73,13 @@ func LoadFile(path string) (Profile, error) {
 		return Profile{}, fmt.Errorf("read profile %s: %w", path, err)
 	}
 	var p Profile
-	if err := toml.NewDecoder(bytes.NewReader(data)).DisallowUnknownFields().Decode(&p); err != nil {
+	decoder := yaml.NewDecoder(bytes.NewReader(data))
+	decoder.KnownFields(true)
+	if err := decoder.Decode(&p); err != nil {
 		return Profile{}, fmt.Errorf("parse profile %s: %w", path, err)
 	}
+	p.ID = p.Unum.ID
+	p.Name = p.Unum.Name
 	p.Path = path
 	return p, nil
 }
@@ -102,13 +95,13 @@ func LoadDir(dir string) ([]Summary, error) {
 
 	var summaries []Summary
 	for _, entry := range entries {
-		if entry.IsDir() || filepath.Ext(entry.Name()) != ".toml" {
+		if entry.IsDir() || !isProfileFile(entry.Name()) {
 			continue
 		}
 		path := filepath.Join(dir, entry.Name())
 		p, err := LoadFile(path)
 		if err != nil {
-			summaries = append(summaries, Summary{ID: strings.TrimSuffix(entry.Name(), ".toml"), Path: path, Validation: ValidationResult{Errors: []string{err.Error()}}})
+			summaries = append(summaries, Summary{ID: trimProfileExt(entry.Name()), Path: path, Validation: ValidationResult{Errors: []string{err.Error()}}})
 			continue
 		}
 		summaries = append(summaries, Summary{
@@ -145,80 +138,212 @@ func Find(dir, id string) (Profile, ValidationResult, error) {
 
 func Validate(p Profile) ValidationResult {
 	var errs []string
-	required := map[string]string{
-		"id":                 p.ID,
-		"runtime.backend":    p.Runtime.Backend,
-		"image.ref":          p.Image.Ref,
-		"model.path":         p.Model.Path,
-		"server.kind":        p.Server.Kind,
-		"server.host":        p.Server.Host,
-		"server.health_path": p.Server.HealthPath,
-		"container.network":  p.Container.Network,
+	if strings.TrimSpace(p.Unum.ID) == "" {
+		errs = append(errs, "x-unum.id is required")
 	}
-	for field, value := range required {
-		if strings.TrimSpace(value) == "" {
-			errs = append(errs, field+" is required")
+	if strings.TrimSpace(p.Unum.Name) == "" {
+		errs = append(errs, "x-unum.name is required")
+	}
+	if len(p.Services) == 0 {
+		errs = append(errs, "services must contain at least one service")
+	}
+	if len(p.Unum.Endpoints) == 0 {
+		errs = append(errs, "x-unum.endpoints must contain at least one endpoint")
+	}
+
+	serviceNames := sortedKeys(p.Services)
+	for _, name := range serviceNames {
+		svc := p.Services[name]
+		if strings.TrimSpace(svc.Image) == "" {
+			errs = append(errs, "services."+name+".image is required")
+		}
+		validateMemory := memoryValidator(&errs)
+		memory, hasMemory := validateMemory("services."+name+".mem_limit", svc.MemLimit)
+		swap, hasSwap := validateMemory("services."+name+".memswap_limit", svc.MemswapLimit)
+		if hasMemory && hasSwap && swap < memory {
+			errs = append(errs, "services."+name+".memswap_limit cannot be less than services."+name+".mem_limit")
+		}
+		for _, volume := range svc.Volumes {
+			host, container, _, err := ParseVolume(volume)
+			if err != nil {
+				errs = append(errs, "services."+name+".volumes: "+err.Error())
+				continue
+			}
+			if !filepath.IsAbs(host) {
+				errs = append(errs, "services."+name+".volumes host must be absolute: "+volume)
+			}
+			if !filepath.IsAbs(container) {
+				errs = append(errs, "services."+name+".volumes container must be absolute: "+volume)
+			}
+		}
+		for _, device := range svc.Devices {
+			host, err := ParseDeviceHost(device)
+			if err != nil {
+				errs = append(errs, "services."+name+".devices: "+err.Error())
+				continue
+			}
+			if !filepath.IsAbs(host) {
+				errs = append(errs, "services."+name+".devices host must be absolute: "+device)
+			}
 		}
 	}
-	if p.Runtime.Backend != "" && p.Runtime.Backend != "podman" {
-		errs = append(errs, "runtime.backend must be podman")
-	}
-	if p.Server.Kind != "" && p.Server.Kind != "openai-compatible" {
-		errs = append(errs, "server.kind must be openai-compatible")
-	}
-	if p.Server.Port <= 0 || p.Server.Port > 65535 {
-		errs = append(errs, "server.port must be between 1 and 65535")
-	}
-	if p.Resources.Threads < 0 {
-		errs = append(errs, "resources.threads cannot be negative")
-	}
-	memoryValues := map[string]int64{}
-	validateMemory := func(field, value string) {
-		if value == "" {
-			return
+
+	endpointNames := sortedKeys(p.Unum.Endpoints)
+	for _, name := range endpointNames {
+		endpoint := p.Unum.Endpoints[name]
+		if strings.TrimSpace(endpoint.URL) == "" {
+			errs = append(errs, "x-unum.endpoints."+name+".url is required")
 		}
-		bytes, err := parseMemory(value)
-		if err != nil {
-			errs = append(errs, field+": "+err.Error())
-			return
+		if strings.TrimSpace(endpoint.Health) == "" {
+			errs = append(errs, "x-unum.endpoints."+name+".health is required")
 		}
-		if bytes > MaxInferenceMemoryBytes {
-			errs = append(errs, field+" exceeds 32g v0 limit")
+		if endpoint.Service == "" {
+			if len(p.Services) != 1 {
+				errs = append(errs, "x-unum.endpoints."+name+".service is required for multi-service profiles")
+			}
+			continue
 		}
-		memoryValues[field] = bytes
-	}
-	validateMemory("resources.memory", p.Resources.Memory)
-	validateMemory("resources.memory_swap", p.Resources.MemorySwap)
-	if memory, ok := memoryValues["resources.memory"]; ok {
-		if swap, ok := memoryValues["resources.memory_swap"]; ok && swap < memory {
-			errs = append(errs, "resources.memory_swap cannot be less than resources.memory")
+		if _, ok := p.Services[endpoint.Service]; !ok {
+			errs = append(errs, "x-unum.endpoints."+name+".service references unknown service "+endpoint.Service)
 		}
 	}
-	if p.Model.Path != "" {
-		if _, err := os.Stat(p.Model.Path); err != nil {
-			errs = append(errs, "model.path is not accessible: "+err.Error())
+
+	for _, model := range p.Unum.Models {
+		if strings.TrimSpace(model) == "" {
+			errs = append(errs, "x-unum.models cannot contain blank entries")
+			continue
+		}
+		if !filepath.IsAbs(model) {
+			errs = append(errs, "x-unum.models entries must be absolute")
+			continue
+		}
+		if _, err := os.Stat(model); err != nil {
+			errs = append(errs, "x-unum.models entry is not accessible: "+err.Error())
 		}
 	}
-	for name, mount := range p.Mounts {
-		if mount.Host == "" || mount.Container == "" {
-			errs = append(errs, "mounts."+name+" host and container are required")
-		}
-		if mount.Host != "" && !filepath.IsAbs(mount.Host) {
-			errs = append(errs, "mounts."+name+".host must be absolute")
-		}
-		if mount.Container != "" && !filepath.IsAbs(mount.Container) {
-			errs = append(errs, "mounts."+name+".container must be absolute")
-		}
-	}
-	for _, device := range p.Container.Devices {
+	for _, device := range p.Unum.RequiredDevices {
 		if strings.TrimSpace(device) == "" {
-			errs = append(errs, "container.devices cannot contain blank entries")
-		} else if !filepath.IsAbs(device) {
-			errs = append(errs, "container.devices entries must be absolute")
+			errs = append(errs, "x-unum.required_devices cannot contain blank entries")
+			continue
+		}
+		if !filepath.IsAbs(device) {
+			errs = append(errs, "x-unum.required_devices entries must be absolute")
+			continue
+		}
+		if _, err := os.Stat(device); err != nil {
+			errs = append(errs, "x-unum.required_devices entry is not accessible: "+err.Error())
 		}
 	}
+
 	sort.Strings(errs)
 	return ValidationResult{Valid: len(errs) == 0, Errors: errs}
+}
+
+func (p Profile) SingleService() (string, Service, error) {
+	if len(p.Services) == 0 {
+		return "", Service{}, fmt.Errorf("profile has no services")
+	}
+	if len(p.Services) != 1 {
+		return "", Service{}, fmt.Errorf("profile has %d services; multi-service start is not implemented", len(p.Services))
+	}
+	for name, svc := range p.Services {
+		return name, svc, nil
+	}
+	panic("unreachable")
+}
+
+func (p Profile) EndpointURL() string {
+	if endpoint, ok := p.Unum.Endpoints["openai"]; ok {
+		return endpoint.URL
+	}
+	names := sortedKeys(p.Unum.Endpoints)
+	if len(names) == 0 {
+		return ""
+	}
+	return p.Unum.Endpoints[names[0]].URL
+}
+
+func ParseVolume(value string) (string, string, string, error) {
+	parts := strings.Split(value, ":")
+	if len(parts) < 2 || len(parts) > 3 {
+		return "", "", "", fmt.Errorf("volume must be host:container[:mode]: %q", value)
+	}
+	if strings.TrimSpace(parts[0]) == "" || strings.TrimSpace(parts[1]) == "" {
+		return "", "", "", fmt.Errorf("volume host and container are required: %q", value)
+	}
+	if len(parts) == 3 && strings.TrimSpace(parts[2]) == "" {
+		return "", "", "", fmt.Errorf("volume mode cannot be blank: %q", value)
+	}
+	return parts[0], parts[1], strings.Join(parts[2:], ":"), nil
+}
+
+func ParseDeviceHost(value string) (string, error) {
+	parts := strings.Split(value, ":")
+	if len(parts) == 0 || len(parts) > 3 || strings.TrimSpace(parts[0]) == "" {
+		return "", fmt.Errorf("device must be host[:container[:permissions]]: %q", value)
+	}
+	for _, part := range parts {
+		if strings.TrimSpace(part) == "" {
+			return "", fmt.Errorf("device entries cannot contain blank parts: %q", value)
+		}
+	}
+	return parts[0], nil
+}
+
+func (s *StringList) UnmarshalYAML(value *yaml.Node) error {
+	switch value.Kind {
+	case yaml.ScalarNode:
+		if value.Value == "" {
+			*s = nil
+			return nil
+		}
+		*s = []string{value.Value}
+		return nil
+	case yaml.SequenceNode:
+		var values []string
+		if err := value.Decode(&values); err != nil {
+			return err
+		}
+		*s = values
+		return nil
+	default:
+		return fmt.Errorf("must be a string or list of strings")
+	}
+}
+
+func memoryValidator(errs *[]string) func(string, string) (int64, bool) {
+	return func(field, value string) (int64, bool) {
+		if strings.TrimSpace(value) == "" {
+			return 0, false
+		}
+		parsed, err := parseMemory(value)
+		if err != nil {
+			*errs = append(*errs, field+": "+err.Error())
+			return 0, false
+		}
+		if parsed > MaxInferenceMemoryBytes {
+			*errs = append(*errs, field+" exceeds 32g v0 limit")
+		}
+		return parsed, true
+	}
+}
+
+func sortedKeys[V any](m map[string]V) []string {
+	keys := make([]string, 0, len(m))
+	for key := range m {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	return keys
+}
+
+func isProfileFile(name string) bool {
+	ext := filepath.Ext(name)
+	return ext == ".yaml" || ext == ".yml"
+}
+
+func trimProfileExt(name string) string {
+	return strings.TrimSuffix(strings.TrimSuffix(name, ".yaml"), ".yml")
 }
 
 func parseMemory(value string) (int64, error) {

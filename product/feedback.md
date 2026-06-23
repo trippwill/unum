@@ -2,6 +2,48 @@
 
 Use this file for product-owner feedback that must survive the conversation until it is promoted to an issue, backlog item, ADR, or implementation plan.
 
+## Tracked for planning
+
+### Configurable validation and defaults
+
+Feedback: "default max memory should be configuration. probably others"
+Type: constraint
+Impact: release behavior
+Decision: track
+Action: Before the next profile-validation slice, decide which hard-coded profile limits/defaults belong in daemon config, starting with max memory.
+
+### Profile templates as reusable bases
+
+Feedback: "eventually users are going to want to have profile templates as a reusable base"
+Type: feature
+Impact: future
+Decision: defer
+Action: Track profile templates as an onboarding/reuse feature; do not add a template abstraction until a real reusable base exists.
+
+### CLI and TUI profile template initialization
+
+Feedback: "the cli and tui should be able to list profile templates, and initilize a new (inactive) profile file from a template"
+Type: feature
+Impact: onboarding
+Decision: track
+Action: Plan a later profile-template slice after Compose profile loading settles: list templates in CLI/TUI and create inactive profile files from a selected template.
+
+### Profile descriptions in list views
+
+Feedback: "profiles should support descriptions for display in the tui and cli list commands"
+Type: feature
+Impact: onboarding
+Decision: track
+Action: Add `x-unum.description` to the profile metadata model and include descriptions in CLI/TUI profile list views in the next profile-display slice.
+
+### Built-in Hugging Face repository downloader
+
+Feedback: "future feature: built-in hf repo downloader"
+Type: feature
+Impact: future
+Decision: defer
+Action: Track as a future model-management feature; keep v0 starter smoke tests manual until profile/runtime basics are stable.
+
 ## Promoted to issues
 
 ### Docker backend for viable v0

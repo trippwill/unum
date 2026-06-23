@@ -80,10 +80,14 @@ func (b Backend) EnsureImage(ctx context.Context, image string) error {
 }
 
 func (b Backend) Create(ctx context.Context, p profile.Profile) (ContainerID, error) {
-	if strings.TrimSpace(p.Image.Ref) == "" {
+	_, svc, err := p.SingleService()
+	if err != nil {
+		return "", err
+	}
+	if strings.TrimSpace(svc.Image) == "" {
 		return "", fmt.Errorf("profile image is required")
 	}
-	args := createArgs(p)
+	args := createArgs(p, svc)
 	out, err := b.runCommand(ctx, args...)
 	if err != nil {
 		return "", err
@@ -175,40 +179,51 @@ func (b Backend) Logs(ctx context.Context, id ContainerID, opts LogOptions) (<-c
 	return lines, nil
 }
 
-func createArgs(p profile.Profile) []string {
+func createArgs(p profile.Profile, svc profile.Service) []string {
+	name := svc.ContainerName
+	if name == "" {
+		name = containerName(p.ID)
+	}
 	args := []string{
 		"create",
-		"--name", containerName(p.ID),
+		"--name", name,
 		"--label", "unum.managed=true",
 		"--label", "unum.profile=" + p.ID,
 	}
-	if p.Container.Network != "" {
-		args = append(args, "--network", p.Container.Network)
+	if svc.NetworkMode != "" {
+		args = append(args, "--network", svc.NetworkMode)
 	}
-	if p.Resources.Memory != "" {
-		args = append(args, "--memory", p.Resources.Memory)
+	if svc.MemLimit != "" {
+		args = append(args, "--memory", svc.MemLimit)
 	}
-	if p.Resources.MemorySwap != "" {
-		args = append(args, "--memory-swap", p.Resources.MemorySwap)
+	if svc.MemswapLimit != "" {
+		args = append(args, "--memory-swap", svc.MemswapLimit)
 	}
-	mountNames := make([]string, 0, len(p.Mounts))
-	for name := range p.Mounts {
-		mountNames = append(mountNames, name)
+	if svc.ShmSize != "" {
+		args = append(args, "--shm-size", svc.ShmSize)
 	}
-	sort.Strings(mountNames)
-	for _, name := range mountNames {
-		mount := p.Mounts[name]
-		mode := "rw"
-		if mount.ReadOnly {
-			mode = "ro"
-		}
-		args = append(args, "--volume", mount.Host+":"+mount.Container+":"+mode)
+	envNames := make([]string, 0, len(svc.Environment))
+	for name := range svc.Environment {
+		envNames = append(envNames, name)
 	}
-	for _, device := range p.Container.Devices {
+	sort.Strings(envNames)
+	for _, name := range envNames {
+		args = append(args, "--env", name+"="+svc.Environment[name])
+	}
+	for _, volume := range svc.Volumes {
+		args = append(args, "--volume", volume)
+	}
+	for _, device := range svc.Devices {
 		args = append(args, "--device", device)
 	}
-	args = append(args, p.Image.Ref)
-	args = append(args, p.Container.Args...)
+	for _, opt := range svc.SecurityOpt {
+		args = append(args, "--security-opt", opt)
+	}
+	if svc.Entrypoint != "" {
+		args = append(args, "--entrypoint", svc.Entrypoint)
+	}
+	args = append(args, svc.Image)
+	args = append(args, svc.Command...)
 	return args
 }
 

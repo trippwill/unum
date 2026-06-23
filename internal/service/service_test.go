@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -55,30 +56,7 @@ func TestStatusOmitsDisabledInferenceEndpoint(t *testing.T) {
 func TestListProfilesUsesConfiguredDirectory(t *testing.T) {
 	dir := t.TempDir()
 	model := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, "qwen.toml"), []byte(`id = "qwen"
-name = "Qwen"
-
-[runtime]
-backend = "podman"
-
-[image]
-ref = "example"
-
-[model]
-path = "`+model+`"
-
-[server]
-kind = "openai-compatible"
-host = "127.0.0.1"
-port = 18080
-health_path = "/health"
-
-[container]
-network = "host"
-args = ["serve"]
-`), 0o644); err != nil {
-		t.Fatal(err)
-	}
+	writeServiceProfile(t, filepath.Join(dir, "qwen.yaml"), "qwen", model)
 
 	cfg := config.Default()
 	cfg.Storage.Profiles = dir
@@ -94,7 +72,7 @@ args = ["serve"]
 func TestActivateProfileUpdatesStatus(t *testing.T) {
 	dir := t.TempDir()
 	model := t.TempDir()
-	writeServiceProfile(t, filepath.Join(dir, "qwen.toml"), "qwen", model)
+	writeServiceProfile(t, filepath.Join(dir, "qwen.yaml"), "qwen", model)
 	cfg := config.Default()
 	cfg.Storage.Profiles = dir
 	svc := New(cfg, "test-version")
@@ -114,7 +92,7 @@ func TestActivateProfileUpdatesStatus(t *testing.T) {
 func TestStartAndStopProfileRecordsOperationsAndInstance(t *testing.T) {
 	dir := t.TempDir()
 	model := t.TempDir()
-	writeServiceProfile(t, filepath.Join(dir, "qwen.toml"), "qwen", model)
+	writeServiceProfile(t, filepath.Join(dir, "qwen.yaml"), "qwen", model)
 	cfg := config.Default()
 	cfg.Storage.Profiles = dir
 	runtime := &fakeRuntime{status: podman.ContainerStatus{ID: "container-1", State: "running", Health: "healthy", Started: time.Unix(100, 0)}}
@@ -171,7 +149,7 @@ func TestStartAndStopProfileRecordsOperationsAndInstance(t *testing.T) {
 func TestTailLogsReadsRuntimeLogs(t *testing.T) {
 	dir := t.TempDir()
 	model := t.TempDir()
-	writeServiceProfile(t, filepath.Join(dir, "qwen.toml"), "qwen", model)
+	writeServiceProfile(t, filepath.Join(dir, "qwen.yaml"), "qwen", model)
 	cfg := config.Default()
 	cfg.Storage.Profiles = dir
 	runtime := &fakeRuntime{
@@ -204,7 +182,7 @@ func TestTailLogsRejectsUnknownInstance(t *testing.T) {
 
 func TestStartProfileRejectsInvalidProfile(t *testing.T) {
 	dir := t.TempDir()
-	writeServiceProfile(t, filepath.Join(dir, "qwen.toml"), "qwen", filepath.Join(t.TempDir(), "missing"))
+	writeServiceProfile(t, filepath.Join(dir, "qwen.yaml"), "qwen", filepath.Join(t.TempDir(), "missing"))
 	cfg := config.Default()
 	cfg.Storage.Profiles = dir
 	svc := New(cfg, "test-version", WithRuntimeBackend(&fakeRuntime{}))
@@ -218,10 +196,30 @@ func TestStartProfileRejectsInvalidProfile(t *testing.T) {
 	}
 }
 
+func TestStartProfileRejectsMultiServiceProfileForNow(t *testing.T) {
+	dir := t.TempDir()
+	model := t.TempDir()
+	writeMultiServiceProfile(t, filepath.Join(dir, "stack.yaml"), model)
+	cfg := config.Default()
+	cfg.Storage.Profiles = dir
+	svc := New(cfg, "test-version", WithRuntimeBackend(&fakeRuntime{}))
+
+	op, err := svc.StartProfile(context.Background(), "stack")
+	if err == nil {
+		t.Fatal("StartProfile accepted multi-service profile")
+	}
+	if op.State != "failed" || op.Phase != "validating" {
+		t.Fatalf("operation = %+v", op)
+	}
+	if !strings.Contains(err.Error(), "multi-service start is not implemented") {
+		t.Fatalf("error = %v", err)
+	}
+}
+
 func TestStartProfileRemovesContainerWhenStartFails(t *testing.T) {
 	dir := t.TempDir()
 	model := t.TempDir()
-	writeServiceProfile(t, filepath.Join(dir, "qwen.toml"), "qwen", model)
+	writeServiceProfile(t, filepath.Join(dir, "qwen.yaml"), "qwen", model)
 	cfg := config.Default()
 	cfg.Storage.Profiles = dir
 	runtime := &fakeRuntime{startErr: errors.New("boom")}
@@ -242,7 +240,7 @@ func TestStartProfileRemovesContainerWhenStartFails(t *testing.T) {
 func TestStartProfileStopsAndRemovesContainerWhenInspectFails(t *testing.T) {
 	dir := t.TempDir()
 	model := t.TempDir()
-	writeServiceProfile(t, filepath.Join(dir, "qwen.toml"), "qwen", model)
+	writeServiceProfile(t, filepath.Join(dir, "qwen.yaml"), "qwen", model)
 	cfg := config.Default()
 	cfg.Storage.Profiles = dir
 	runtime := &fakeRuntime{inspectErr: errors.New("boom")}
@@ -346,27 +344,56 @@ func (f *fakeRuntime) Logs(_ context.Context, id podman.ContainerID, opts podman
 
 func writeServiceProfile(t *testing.T, path, id, model string) {
 	t.Helper()
-	data := []byte(`id = "` + id + `"
-name = "` + id + `"
+	data := []byte(`services:
+  ` + id + `:
+    image: example
+    network_mode: host
+    volumes:
+      - ` + model + `:/models:ro
+    command: ["serve"]
+x-unum:
+  id: ` + id + `
+  name: ` + id + `
+  endpoints:
+    openai:
+      service: ` + id + `
+      url: http://127.0.0.1:18080/v1
+      health: /health
+  models:
+    - ` + model + `
+`)
+	if err := os.WriteFile(path, data, 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
 
-[runtime]
-backend = "podman"
-
-[image]
-ref = "example"
-
-[model]
-path = "` + model + `"
-
-[server]
-kind = "openai-compatible"
-host = "127.0.0.1"
-port = 18080
-health_path = "/health"
-
-[container]
-network = "host"
-args = ["serve"]
+func writeMultiServiceProfile(t *testing.T, path, model string) {
+	t.Helper()
+	data := []byte(`services:
+  llm:
+    image: example-llm
+    network_mode: host
+    volumes:
+      - ` + model + `:/models:ro
+    command: ["serve-llm"]
+  diffusion:
+    image: example-diffusion
+    network_mode: host
+    command: ["serve-diffusion"]
+x-unum:
+  id: stack
+  name: Stack
+  endpoints:
+    openai:
+      service: llm
+      url: http://127.0.0.1:18080/v1
+      health: /health
+    diffusion:
+      service: diffusion
+      url: http://127.0.0.1:18100
+      health: /health
+  models:
+    - ` + model + `
 `)
 	if err := os.WriteFile(path, data, 0o644); err != nil {
 		t.Fatal(err)

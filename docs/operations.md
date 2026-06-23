@@ -69,7 +69,12 @@ dev_insecure_http = false
 
 ## Profiles
 
-Start from [`examples/profiles/qwen3-small-cpu.toml`](../examples/profiles/qwen3-small-cpu.toml).
+Start from [`examples/profiles/qwen3-small-cpu.yaml`](../examples/profiles/qwen3-small-cpu.yaml).
+Profiles are Compose-compatible YAML: put container runtime settings under
+`services` and Unum metadata under `x-unum`. `unumd init` writes the same
+starter profile to the configured profiles directory. v0 accepts only the
+documented subset in the example profile; unsupported Compose keys fail
+validation instead of being ignored.
 
 Validation:
 
@@ -78,11 +83,17 @@ sudo unumd profiles list --config /etc/unum/unumd.toml
 sudo unumd profiles validate --config /etc/unum/unumd.toml qwen3-small-cpu
 ```
 
-The sample profile is a template. Validation fails until `model.path` exists and
-the image/args match your serving container.
+The starter profile uses `ghcr.io/ggml-org/llama.cpp:server` and expects this
+model file:
 
-Accelerators are explicit profile config. Do not add the integrated iGPU unless
-you intend Unum workloads to use it.
+```text
+/var/lib/unum/models/Qwen3-0.6B-Q4_K_M.gguf
+```
+
+Validation fails until the `x-unum.models` paths exist.
+
+Accelerators are explicit Compose profile config. Do not add the integrated
+iGPU under `devices` unless you intend Unum workloads to use it.
 
 ## Inference tokens
 

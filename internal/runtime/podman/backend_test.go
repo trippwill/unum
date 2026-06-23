@@ -15,20 +15,21 @@ func TestCreateMapsProfileToPodmanArgs(t *testing.T) {
 		return []byte("abc123\n"), nil
 	}}
 	p := profile.Profile{
-		ID:      "qwen3/small cpu",
-		Image:   profile.Image{Ref: "example/llm:latest"},
-		Runtime: profile.Runtime{Backend: "podman"},
-		Resources: profile.Resources{
-			Memory:     "32g",
-			MemorySwap: "32g",
-		},
-		Mounts: map[string]profile.Mount{
-			"models": {Host: "/models", Container: "/models", ReadOnly: true},
-		},
-		Container: profile.Container{
-			Network: "host",
-			Devices: []string{"/dev/dri/renderD128"},
-			Args:    []string{"serve", "--port", "18080"},
+		ID: "qwen3/small cpu",
+		Services: map[string]profile.Service{
+			"qwen": {
+				Image:        "example/llm:latest",
+				NetworkMode:  "host",
+				Devices:      []string{"/dev/dri/renderD128"},
+				Volumes:      []string{"/models:/models:ro"},
+				Environment:  map[string]string{"B": "2", "A": "1"},
+				MemLimit:     "32g",
+				MemswapLimit: "32g",
+				ShmSize:      "8g",
+				SecurityOpt:  []string{"label=disable"},
+				Entrypoint:   "/bin/bash",
+				Command:      []string{"serve", "--port", "18080"},
+			},
 		},
 	}
 
@@ -47,8 +48,13 @@ func TestCreateMapsProfileToPodmanArgs(t *testing.T) {
 		"--network", "host",
 		"--memory", "32g",
 		"--memory-swap", "32g",
+		"--shm-size", "8g",
+		"--env", "A=1",
+		"--env", "B=2",
 		"--volume", "/models:/models:ro",
 		"--device", "/dev/dri/renderD128",
+		"--security-opt", "label=disable",
+		"--entrypoint", "/bin/bash",
 		"example/llm:latest",
 		"serve", "--port", "18080",
 	}

@@ -217,8 +217,12 @@ func (s *Service) StartProfile(ctx context.Context, id string) (OperationSummary
 		err := fmt.Errorf("profile %q is invalid: %s", id, reason)
 		return s.failOperation(op.ID, "validating", err.Error()), err
 	}
-	s.updateOperation(op.ID, "checking image", "running", p.Image.Ref)
-	if err := s.runtime.EnsureImage(ctx, p.Image.Ref); err != nil {
+	_, svc, err := p.SingleService()
+	if err != nil {
+		return s.failOperation(op.ID, "validating", err.Error()), err
+	}
+	s.updateOperation(op.ID, "checking image", "running", svc.Image)
+	if err := s.runtime.EnsureImage(ctx, svc.Image); err != nil {
 		return s.failOperation(op.ID, "checking image", err.Error()), err
 	}
 	s.updateOperation(op.ID, "creating container", "running", id)
@@ -255,7 +259,7 @@ func (s *Service) StartProfile(ctx context.Context, id string) (OperationSummary
 		Runtime:   s.cfg.Runtime.Backend,
 		State:     status.State,
 		Health:    status.Health,
-		Endpoint:  fmt.Sprintf("http://%s:%d", p.Server.Host, p.Server.Port),
+		Endpoint:  p.EndpointURL(),
 		StartedAt: formatTime(status.Started),
 	}
 	s.mu.Unlock()

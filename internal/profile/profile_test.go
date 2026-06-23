@@ -19,15 +19,17 @@ func TestValidateAcceptsMinimalCPUProfile(t *testing.T) {
 
 func TestValidateRejectsMissingModelAndOversizedMemory(t *testing.T) {
 	p := validProfile(filepath.Join(t.TempDir(), "missing"))
-	p.Resources.Memory = "33g"
-	p.Container.Devices = []string{"dri/renderD128"}
+	svc := p.Services["qwen3-small-cpu"]
+	svc.MemLimit = "33g"
+	svc.Devices = []string{"dri/renderD128"}
+	p.Services["qwen3-small-cpu"] = svc
 
 	got := Validate(p)
 	if got.Valid {
 		t.Fatal("profile unexpectedly valid")
 	}
 	want := strings.Join(got.Errors, "\n")
-	for _, part := range []string{"model.path is not accessible", "resources.memory exceeds 32g", "container.devices entries must be absolute"} {
+	for _, part := range []string{"x-unum.models entry is not accessible", "mem_limit exceeds 32g", "devices host must be absolute"} {
 		if !strings.Contains(want, part) {
 			t.Fatalf("errors %q do not contain %q", want, part)
 		}
@@ -36,20 +38,47 @@ func TestValidateRejectsMissingModelAndOversizedMemory(t *testing.T) {
 
 func TestValidateRejectsSwapBelowMemory(t *testing.T) {
 	p := validProfile(t.TempDir())
-	p.Resources.Memory = "16g"
-	p.Resources.MemorySwap = "8g"
+	svc := p.Services["qwen3-small-cpu"]
+	svc.MemLimit = "16g"
+	svc.MemswapLimit = "8g"
+	p.Services["qwen3-small-cpu"] = svc
 
 	got := Validate(p)
-	if got.Valid || !strings.Contains(strings.Join(got.Errors, "\n"), "memory_swap cannot be less") {
+	if got.Valid || !strings.Contains(strings.Join(got.Errors, "\n"), "memswap_limit cannot be less") {
 		t.Fatalf("errors = %v", got.Errors)
+	}
+}
+
+func TestValidateRejectsBadEndpointService(t *testing.T) {
+	p := validProfile(t.TempDir())
+	p.Unum.Endpoints["openai"] = Endpoint{Service: "missing", URL: "http://127.0.0.1:18080/v1", Health: "/health"}
+
+	got := Validate(p)
+	if got.Valid || !strings.Contains(strings.Join(got.Errors, "\n"), "references unknown service missing") {
+		t.Fatalf("errors = %v", got.Errors)
+	}
+}
+
+func TestValidateAcceptsVolumeModeOptions(t *testing.T) {
+	p := validProfile(t.TempDir())
+	svc := p.Services["qwen3-small-cpu"]
+	svc.Volumes = []string{p.Unum.Models[0] + ":/models:ro,Z"}
+	p.Services["qwen3-small-cpu"] = svc
+
+	got := Validate(p)
+	if !got.Valid {
+		t.Fatalf("Validate errors = %v", got.Errors)
 	}
 }
 
 func TestLoadDirReturnsSortedSummaries(t *testing.T) {
 	dir := t.TempDir()
 	model := t.TempDir()
-	writeProfile(t, filepath.Join(dir, "b.toml"), "b", model)
-	writeProfile(t, filepath.Join(dir, "a.toml"), "a", model)
+	writeProfile(t, filepath.Join(dir, "b.yaml"), "b", model)
+	writeProfile(t, filepath.Join(dir, "a.yml"), "a", model)
+	if err := os.WriteFile(filepath.Join(dir, "old.toml"), []byte("id = \"old\"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	got, err := LoadDir(dir)
 	if err != nil {
@@ -62,47 +91,48 @@ func TestLoadDirReturnsSortedSummaries(t *testing.T) {
 
 func validProfile(model string) Profile {
 	return Profile{
-		ID:      "qwen3-small-cpu",
-		Name:    "Qwen3 Small CPU",
-		Runtime: Runtime{Backend: "podman"},
-		Image:   Image{Ref: "docker.io/example/unum-llm-cpu:0.1.0"},
-		Model:   Model{Path: model},
-		Server:  Server{Kind: "openai-compatible", Host: "127.0.0.1", Port: 18080, HealthPath: "/health"},
-		Resources: Resources{
-			Memory:     "32g",
-			MemorySwap: "32g",
-			Threads:    8,
+		ID:   "qwen3-small-cpu",
+		Name: "Qwen3 Small CPU",
+		Services: map[string]Service{
+			"qwen3-small-cpu": {
+				Image:        "docker.io/example/unum-llm-cpu:0.1.0",
+				NetworkMode:  "host",
+				Volumes:      []string{model + ":/models:ro"},
+				MemLimit:     "32g",
+				MemswapLimit: "32g",
+				Command:      []string{"serve"},
+			},
 		},
-		Mounts: map[string]Mount{
-			"models": {Host: model, Container: "/models", ReadOnly: true},
+		Unum: UnumMetadata{
+			ID:   "qwen3-small-cpu",
+			Name: "Qwen3 Small CPU",
+			Endpoints: map[string]Endpoint{
+				"openai": {Service: "qwen3-small-cpu", URL: "http://127.0.0.1:18080/v1", Health: "/health"},
+			},
+			Models: []string{model},
 		},
-		Container: Container{Network: "host", Args: []string{"serve"}},
 	}
 }
 
 func writeProfile(t *testing.T, path, id, model string) {
 	t.Helper()
-	data := []byte(`id = "` + id + `"
-name = "` + id + `"
-
-[runtime]
-backend = "podman"
-
-[image]
-ref = "docker.io/example/unum-llm-cpu:0.1.0"
-
-[model]
-path = "` + model + `"
-
-[server]
-kind = "openai-compatible"
-host = "127.0.0.1"
-port = 18080
-health_path = "/health"
-
-[container]
-network = "host"
-args = ["serve"]
+	data := []byte(`services:
+  ` + id + `:
+    image: docker.io/example/unum-llm-cpu:0.1.0
+    network_mode: host
+    volumes:
+      - ` + model + `:/models:ro
+    command: ["serve"]
+x-unum:
+  id: ` + id + `
+  name: ` + id + `
+  endpoints:
+    openai:
+      service: ` + id + `
+      url: http://127.0.0.1:18080/v1
+      health: /health
+  models:
+    - ` + model + `
 `)
 	if err := os.WriteFile(path, data, 0o644); err != nil {
 		t.Fatal(err)

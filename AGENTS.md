@@ -34,7 +34,7 @@ Unum is a rootful Fedora + Podman daemon for trusted-server local inference mana
 - `cmd/unumd` owns CLI parsing and command wiring only.
 - `internal/config` owns strict TOML config loading and defaults.
 - `internal/setup` owns `unumd init`, root-owned state/config creation, SSH host key generation, and starter profile creation.
-- `internal/profile` owns profile TOML loading and validation.
+- `internal/profile` owns Compose-compatible profile YAML loading and validation.
 - `internal/service` is the central use-case layer used by CLI, SSH TUI, and inference code.
 - `internal/runtime/podman` is the only container backend; it shells directly to `podman` with fixed argv, never through a shell.
 - `internal/sshui` serves the Wish/Bubble Tea SSH TUI and uses the service layer only.
