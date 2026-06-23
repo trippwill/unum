@@ -9,6 +9,7 @@
 - Keep hostnames, IPs, model paths, TLS paths, and device mappings configurable.
 - Use `/docs` only for user-facing docs; keep ADRs, briefs, feedback, and other product docs under `/product`.
 - Add an ADR only when a decision affects architecture boundaries, major dependencies, protocols, storage/deployment models, durable security/operational constraints, deferred obvious alternatives, or release scope.
+- Treat `AGENTS.md` as the canonical agent instruction file; keep `.github/copilot-instructions.md` as a pointer only.
 - Before v1, prefer replacement over compatibility fallbacks; after v1, breaking changes require a major version bump and planning must account for that.
 - Prefer clean architecture boundaries, but do not add future-only interfaces.
 - Ponytail rule: delete/stdlib/native first; add dependencies only when they remove real code.
@@ -46,10 +47,12 @@ Default rootful paths are `/etc/unum/unumd.toml` and `/var/lib/unum`.
 
 - Treat product-owner feedback as durable input: capture it, classify it, and map it to the active release goals before acting.
 - Ledger raw product-owner feedback, but still make recommendations, clarify tradeoffs, and push back during planning.
+- Before closing a planning thread, promote durable product-owner feedback from session state into `product/feedback.md`, issues, ADRs, or a plan.
 - Prefer clean architecture at boundaries, Ponytail/YAGNI inside boundaries.
 - Prioritize: security/data loss, release blockers, promised release behavior, simplification, docs/onboarding, future work.
 - Keep work in buildable Conventional Commit slices.
 - Get rubber-duck review before commits and security review for security-sensitive changes.
+- For long-running review agents, report that the agent is still running, then read results on completion notification instead of re-running the same review.
 - Update docs/tests when behavior changes.
 
 ## Security and behavior conventions
