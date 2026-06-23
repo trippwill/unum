@@ -303,7 +303,7 @@ func (m dashboardModel) loadLogs() dashboardModel {
 	}
 	m.logs = logs
 	m.page = pageLogs
-	m.message = "loaded logs for " + id
+	m.message = "loaded logs for " + instanceLabel(m.instances[m.instanceIndex])
 	return m
 }
 
@@ -349,7 +349,7 @@ func (m dashboardModel) viewInstances() string {
 		if i == m.instanceIndex {
 			marker = ">"
 		}
-		rows = append(rows, fmt.Sprintf("%s %s  %s  %s  %s  %s", marker, instance.ID, instance.ProfileID, instance.State, instance.Health, instance.StartedAt))
+		rows = append(rows, fmt.Sprintf("%s %s  %s  %s  %s  %s  %s", marker, instanceLabel(instance), shortID(instance.ID), instance.ProfileID, instance.State, instance.Health, instance.StartedAt))
 	}
 	return strings.Join(rows, "\n") + "\n\nj/k select  l load logs"
 }
@@ -405,6 +405,23 @@ func emptyDash(value string) string {
 		return "-"
 	}
 	return value
+}
+
+func instanceLabel(instance service.InstanceSummary) string {
+	if instance.Name != "" {
+		return instance.Name
+	}
+	if instance.ProfileID != "" {
+		return instance.ProfileID
+	}
+	return shortID(instance.ID)
+}
+
+func shortID(id string) string {
+	if len(id) > 12 {
+		return id[:12]
+	}
+	return id
 }
 
 func clamp(i, length int) int {

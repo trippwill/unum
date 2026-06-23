@@ -61,6 +61,7 @@ type ProfileSummary struct {
 
 type InstanceSummary struct {
 	ID        string
+	Name      string
 	ProfileID string
 	Runtime   string
 	State     string
@@ -255,6 +256,7 @@ func (s *Service) StartProfile(ctx context.Context, id string) (OperationSummary
 	s.mu.Lock()
 	s.instances[id] = InstanceSummary{
 		ID:        string(containerID),
+		Name:      status.Name,
 		ProfileID: id,
 		Runtime:   s.cfg.Runtime.Backend,
 		State:     status.State,

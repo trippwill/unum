@@ -44,6 +44,42 @@ Impact: future
 Decision: defer
 Action: Track as a future model-management feature; keep v0 starter smoke tests manual until profile/runtime basics are stable.
 
+### TUI logs missing during smoke test
+
+Feedback: "container is started. that's good. appears in tui. that's good. no logs in tui."
+Follow-up: "also the long instance ids are terrible ux"
+Follow-up: "also ux: if we're going to prepend container names with unum_ we need to show that in the tui and cli otherwise users will look for qwen3-small-cpu container and not find it"
+Type: bug
+Impact: v0 behavior
+Decision: track
+Action: Investigate TUI log loading/selection against a started profile instance before release, show the actual runtime container name in CLI/TUI, and shorten or hide full container IDs in instance/log messages.
+
+### Hugging Face CLI model download workflow
+
+Feedback: "the model download didn't go well, I generally expect to use hf cli to download a model repo, but I don't know what llama.cpp expects for a GGUF"
+Follow-up: "I'm going to download as a repo, and then symlink into the repo from models/ to the actual gguf file. v0 note: we should assume/support full repo downloads and not just GGUFs b/c dynamic online quantization has to be supporteed"
+Type: feature
+Impact: v0 behavior
+Decision: track
+Action: Document an HF CLI repo-download workflow for smoke tests and ensure future downloader/model handling supports full model repositories, not only standalone GGUF files, because dynamic online quantization needs repo contents.
+
+### File and repository model path validation
+
+Feedback: "we're going to need a solution for repo and single file based models, maybe the compose style config handles it already, but validation may need to be updates?"
+Type: question
+Impact: v0 behavior
+Decision: track
+Action: Decide whether `x-unum.models` should distinguish files, directories, or generic paths; update validation and examples so both standalone GGUF files and full model repositories are supported.
+
+### Model directory permissions during smoke test
+
+Feedback: "permissions are too tight on models for my user to cd or ls it"
+Follow-up: "it's actually the parent /var/lib/unum that had the tight permissions"
+Type: bug
+Impact: onboarding
+Decision: track
+Action: Revisit init-created `/var/lib/unum` and model directory permissions or documented operator group ownership so admins can traverse, inspect, and populate models without weakening rootful runtime assumptions.
+
 ## Promoted to issues
 
 ### Docker backend for viable v0

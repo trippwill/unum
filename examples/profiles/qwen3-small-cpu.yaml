@@ -7,7 +7,7 @@ services:
       - /var/lib/unum/models:/models:ro
     mem_limit: 4g
     memswap_limit: 4g
-    command: ["--model", "/models/Qwen3-0.6B-Q4_K_M.gguf", "--host", "127.0.0.1", "--port", "18080"]
+    command: ["--model", "/models/Qwen_Qwen3-0.6B-Q4_K_M.gguf", "--host", "127.0.0.1", "--port", "18080"]
 
 x-unum:
   id: qwen3-small-cpu
@@ -18,4 +18,4 @@ x-unum:
       url: http://127.0.0.1:18080/v1
       health: /health
   models:
-    - /var/lib/unum/models/Qwen3-0.6B-Q4_K_M.gguf
+    - /var/lib/unum/models/Qwen_Qwen3-0.6B-Q4_K_M.gguf

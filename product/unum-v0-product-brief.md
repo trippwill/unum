@@ -451,7 +451,7 @@ services:
       - /laser/ai/models:/models:ro
     mem_limit: 4g
     memswap_limit: 4g
-    command: ["--model", "/models/Qwen3-0.6B-Q4_K_M.gguf", "--host", "127.0.0.1", "--port", "18080"]
+    command: ["--model", "/models/Qwen_Qwen3-0.6B-Q4_K_M.gguf", "--host", "127.0.0.1", "--port", "18080"]
 
 x-unum:
   id: qwen3-small-cpu
@@ -462,7 +462,7 @@ x-unum:
       url: http://127.0.0.1:18080/v1
       health: /health
   models:
-    - /laser/ai/models/Qwen3-0.6B-Q4_K_M.gguf
+    - /laser/ai/models/Qwen_Qwen3-0.6B-Q4_K_M.gguf
 ```
 
 For the `unum` server, later XPU profiles can use the same structure with devices added.

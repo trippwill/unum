@@ -95,7 +95,7 @@ func TestStartAndStopProfileRecordsOperationsAndInstance(t *testing.T) {
 	writeServiceProfile(t, filepath.Join(dir, "qwen.yaml"), "qwen", model)
 	cfg := config.Default()
 	cfg.Storage.Profiles = dir
-	runtime := &fakeRuntime{status: podman.ContainerStatus{ID: "container-1", State: "running", Health: "healthy", Started: time.Unix(100, 0)}}
+	runtime := &fakeRuntime{status: podman.ContainerStatus{ID: "container-1", Name: "unum-qwen", State: "running", Health: "healthy", Started: time.Unix(100, 0)}}
 	svc := New(cfg, "test-version", WithRuntimeBackend(runtime))
 
 	start, err := svc.StartProfile(context.Background(), "qwen")
@@ -113,7 +113,7 @@ func TestStartAndStopProfileRecordsOperationsAndInstance(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(instances) != 1 || instances[0].ProfileID != "qwen" || instances[0].Health != "healthy" {
+	if len(instances) != 1 || instances[0].ProfileID != "qwen" || instances[0].Name != "unum-qwen" || instances[0].Health != "healthy" {
 		t.Fatalf("instances = %+v", instances)
 	}
 	if instances[0].StartedAt == "" {

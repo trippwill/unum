@@ -87,10 +87,22 @@ The starter profile uses `ghcr.io/ggml-org/llama.cpp:server` and expects this
 model file:
 
 ```text
-/var/lib/unum/models/Qwen3-0.6B-Q4_K_M.gguf
+/var/lib/unum/models/Qwen_Qwen3-0.6B-Q4_K_M.gguf
 ```
 
 Validation fails until the `x-unum.models` paths exist.
+
+For a direct smoke-test download:
+
+```bash
+cd /var/lib/unum/models
+curl -L \
+  -o Qwen_Qwen3-0.6B-Q4_K_M.gguf \
+  https://huggingface.co/bartowski/Qwen_Qwen3-0.6B-GGUF/resolve/main/Qwen_Qwen3-0.6B-Q4_K_M.gguf
+```
+
+Full Hugging Face repository downloads are also valid when profiles mount the
+repository directory and point commands at the model file inside it.
 
 Accelerators are explicit Compose profile config. Do not add the integrated
 iGPU under `devices` unless you intend Unum workloads to use it.
