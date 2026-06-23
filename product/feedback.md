@@ -4,6 +4,14 @@ Use this file for product-owner feedback that must survive the conversation unti
 
 ## Tracked for planning
 
+### Developer branch update helper
+
+Feedback: "I'd like a developer convenience for pulling a branch and updating to simplify user testing"
+Type: feature
+Impact: onboarding
+Decision: do now
+Action: Add a small `mise run dev-update -- BRANCH` helper for clean-worktree branch pull, CI gate, install, init, enable, and service restart on a test server.
+
 ### Configurable validation and defaults
 
 Feedback: "default max memory should be configuration. probably others"

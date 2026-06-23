@@ -11,6 +11,16 @@ sudo install -Dm755 bin/unumd /usr/local/bin/unumd
 sudo install -Dm644 packaging/systemd/unumd.service /etc/systemd/system/unumd.service
 ```
 
+For testing a pushed branch on a server that already has the repo checked out:
+
+```bash
+mise run dev-update -- feat/compose-profile-yaml
+```
+
+The helper refuses a dirty worktree, fetches and fast-forwards the branch, runs
+the CI-equivalent gate, installs `unumd` and the systemd unit, runs idempotent
+init, enables the unit, and restarts `unumd`.
+
 Initialize root-owned config and state:
 
 ```bash

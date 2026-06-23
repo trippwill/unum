@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+#MISE description="Fetch a branch, build, install, and restart unumd for server testing"
+exec scripts/dev-update "$@"

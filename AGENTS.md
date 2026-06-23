@@ -26,6 +26,7 @@
 - Build daemon: `mise run build`
 - Full local gate: `mise run precommit`
 - CI-equivalent gate: `mise run ci`
+- Update a test server from a branch: `mise run dev-update -- BRANCH`
 
 ## Architecture
 

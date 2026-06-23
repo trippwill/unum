@@ -1,0 +1,47 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+branch="${1:-${UNUM_BRANCH:-}}"
+config="${UNUM_CONFIG:-/etc/unum/unumd.toml}"
+state="${UNUM_STATE:-/var/lib/unum}"
+server_name="${UNUM_SERVER_NAME:-unum}"
+
+usage() {
+  echo "usage: mise run dev-update -- BRANCH" >&2
+  echo "   or: UNUM_BRANCH=BRANCH mise run dev-update" >&2
+}
+
+if [ "${1:-}" = "-h" ] || [ "${1:-}" = "--help" ]; then
+  usage
+  exit 0
+fi
+
+if [ -z "$branch" ]; then
+  usage
+  exit 2
+fi
+
+if [ -n "$(git status --porcelain)" ]; then
+  git --no-pager status --short --branch
+  echo "worktree is dirty; commit or stash before updating" >&2
+  exit 1
+fi
+
+git fetch origin
+if git show-ref --verify --quiet "refs/heads/$branch"; then
+  git switch "$branch"
+else
+  git switch --track "origin/$branch"
+fi
+git pull --ff-only
+
+mise install
+mise run ci
+
+sudo install -Dm755 bin/unumd /usr/local/bin/unumd
+sudo install -Dm644 packaging/systemd/unumd.service /etc/systemd/system/unumd.service
+sudo /usr/local/bin/unumd init --config "$config" --state "$state" --server-name "$server_name"
+sudo systemctl daemon-reload
+sudo systemctl enable unumd
+sudo systemctl restart unumd
+sudo systemctl status unumd --no-pager
