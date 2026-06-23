@@ -27,6 +27,10 @@ This registers each non-comment key as `admin-1`, `admin-2`, etc., and skips
 keys already registered. To register one key only, use `ssh add-key` with a
 single-key `.pub` file.
 
+Unum rejects `authorized_keys` entries with OpenSSH options such as `from=`,
+`command=`, or `restrict` because v0 does not enforce those restrictions.
+Unum also rejects SSH certificate entries for the same reason.
+
 Start the daemon:
 
 ```bash

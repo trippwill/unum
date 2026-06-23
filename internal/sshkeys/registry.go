@@ -240,9 +240,15 @@ func normalizePublicKeys(data []byte) ([]string, error) {
 		if len(line) == 0 || bytes.HasPrefix(line, []byte("#")) {
 			continue
 		}
-		key, _, _, rest, err := ssh.ParseAuthorizedKey(line)
+		key, _, options, rest, err := ssh.ParseAuthorizedKey(line)
 		if err != nil {
 			return nil, fmt.Errorf("parse public key: %w", err)
+		}
+		if len(options) != 0 {
+			return nil, fmt.Errorf("authorized_keys options are not supported for unum admin import")
+		}
+		if _, ok := key.(*ssh.Certificate); ok {
+			return nil, fmt.Errorf("ssh certificates are not supported for unum admin import")
 		}
 		if len(bytes.TrimSpace(rest)) != 0 {
 			return nil, fmt.Errorf("public key line has trailing data")

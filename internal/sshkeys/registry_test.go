@@ -72,6 +72,30 @@ func TestStoreRejectsMultipleAuthorizedKeys(t *testing.T) {
 	}
 }
 
+func TestStoreRejectsAuthorizedKeysOptions(t *testing.T) {
+	store := Store{Path: filepath.Join(t.TempDir(), "authorized-clients.json")}
+	authorizedKeys := append([]byte(`from="10.0.0.0/8" `), testAuthorizedKey(t)...)
+
+	if _, err := store.Add("laptop", AdminRole, authorizedKeys); err == nil {
+		t.Fatal("authorized_keys options were accepted")
+	}
+	if _, _, err := store.AddAuthorizedKeys("admin", AdminRole, authorizedKeys); err == nil {
+		t.Fatal("authorized_keys options were accepted for bulk import")
+	}
+}
+
+func TestStoreRejectsAuthorizedKeyCertificates(t *testing.T) {
+	store := Store{Path: filepath.Join(t.TempDir(), "authorized-clients.json")}
+	cert := testAuthorizedCertificate(t)
+
+	if _, err := store.Add("laptop", AdminRole, cert); err == nil {
+		t.Fatal("ssh certificate was accepted")
+	}
+	if _, _, err := store.AddAuthorizedKeys("admin", AdminRole, cert); err == nil {
+		t.Fatal("ssh certificate was accepted for bulk import")
+	}
+}
+
 func TestStoreAddsAuthorizedKeysFile(t *testing.T) {
 	store := Store{Path: filepath.Join(t.TempDir(), "authorized-clients.json")}
 	keys := append([]byte("# admin keys\n"), testAuthorizedKey(t)...)
@@ -129,4 +153,44 @@ func testAuthorizedKey(t *testing.T) []byte {
 		t.Fatal(err)
 	}
 	return ssh.MarshalAuthorizedKey(sshPub)
+}
+
+func testAuthorizedCertificate(t *testing.T) []byte {
+	t.Helper()
+	pub, private, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	caPub, caPrivate, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	key, err := ssh.NewPublicKey(pub)
+	if err != nil {
+		t.Fatal(err)
+	}
+	caKey, err := ssh.NewPublicKey(caPub)
+	if err != nil {
+		t.Fatal(err)
+	}
+	caSigner, err := ssh.NewSignerFromSigner(caPrivate)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cert := &ssh.Certificate{
+		Key:             key,
+		Serial:          1,
+		CertType:        ssh.UserCert,
+		KeyId:           "test",
+		ValidPrincipals: []string{"tripp"},
+		ValidBefore:     ssh.CertTimeInfinity,
+		SignatureKey:    caKey,
+	}
+	if err := cert.SignCert(rand.Reader, caSigner); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ssh.NewSignerFromSigner(private); err != nil {
+		t.Fatal(err)
+	}
+	return ssh.MarshalAuthorizedKey(cert)
 }
