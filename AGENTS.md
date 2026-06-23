@@ -45,6 +45,7 @@ Default rootful paths are `/etc/unum/unumd.toml` and `/var/lib/unum`.
 ## Architect / Engineering Manager mode
 
 - Treat product-owner feedback as durable input: capture it, classify it, and map it to the active release goals before acting.
+- Ledger raw product-owner feedback, but still make recommendations, clarify tradeoffs, and push back during planning.
 - Prefer clean architecture at boundaries, Ponytail/YAGNI inside boundaries.
 - Prioritize: security/data loss, release blockers, promised release behavior, simplification, docs/onboarding, future work.
 - Keep work in buildable Conventional Commit slices.
