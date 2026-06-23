@@ -16,9 +16,9 @@ Profiles also need Unum-specific metadata: profile identity, endpoint purpose, h
 
 Use a Compose-compatible profile file as the v0 profile format, with Unum metadata in an `x-unum` extension block.
 
-Each v0 profile file describes exactly one service. That service may expose multiple endpoints. Unum remains an active-profile switcher, not a general orchestrator.
+Each v0 profile file may describe one or more services. Multi-service, multi-container profiles are required for viable v0 workloads. Unum remains an active-profile switcher, not a general-purpose orchestrator: it starts, stops, validates, and displays one profile at a time, but a profile may contain multiple cooperating containers.
 
-The service section owns container runtime shape:
+The `services` section owns container runtime shape:
 
 - image;
 - container name;
@@ -82,21 +82,61 @@ x-unum:
     - /dev/dri/by-path/pci-0000:12:00.0-render
 ```
 
+Multi-service example:
+
+```yaml
+services:
+  diffusion:
+    image: docker.io/example/sglang-diffusion:latest
+    container_name: unum-sglang-diffusion
+    network_mode: host
+    devices:
+      - /dev/dri/renderD128:/dev/dri/renderD128
+    volumes:
+      - /laser/ai/models/diffusion:/models:ro
+    command: ["serve-diffusion", "--host", "0.0.0.0", "--port", "18100"]
+
+  frontend-llm:
+    image: docker.io/example/openai-frontend:latest
+    container_name: unum-frontend-llm
+    network_mode: host
+    volumes:
+      - /laser/ai/models/small-llm:/models:ro
+    command: ["serve-openai", "--host", "0.0.0.0", "--port", "18101"]
+
+x-unum:
+  id: sglang-diffusion-with-llm
+  name: SGLang diffusion with LLM frontend
+  endpoints:
+    diffusion:
+      service: diffusion
+      url: http://unum.internal:18100
+      health: /health
+    openai:
+      service: frontend-llm
+      url: http://unum.internal:18101/v1
+      health: /health
+```
+
 ## Endpoint model
 
 Profiles may expose multiple endpoints. Endpoints are profile-owned and may use different ports.
 
 Endpoint `url` values are client-facing URLs that Unum displays and can health-check. They are not container-internal URLs. Local-only endpoints may use loopback; endpoints intended for remote agents should use a reachable host name such as `unum.internal`.
 
-Multi-endpoint profiles are required for v0. For example, one profile may serve an SGLang diffusion endpoint and a small OpenAI-compatible LLM/frontend endpoint from the same service/container. Remote agents can then target the endpoint they need and fail clearly if that profile is not running.
+Endpoint `service` values name the Compose service that backs the endpoint. `service` is required when a profile has more than one service and may be inferred when a profile has exactly one service.
+
+Multi-endpoint profiles are required for v0. For example, one profile may serve an SGLang diffusion endpoint and a small OpenAI-compatible LLM/frontend endpoint from cooperating services. Remote agents can then target the endpoint they need and fail clearly if that profile is not running.
 
 ```yaml
 x-unum:
   endpoints:
     diffusion:
+      service: diffusion
       url: http://unum.internal:18100
       health: /health
     openai:
+      service: frontend-llm
       url: http://unum.internal:18101/v1
       health: /health
 ```
@@ -110,19 +150,22 @@ Unum serves one active profile at a time.
 That profile may expose one or more explicit endpoints.
 ```
 
-Web UIs such as ComfyUI or OpenWebUI are separate profiles when they need their own process. A profile can expose a `webui` endpoint on its own port, but only when the profile's single service actually serves that endpoint.
+Web UIs such as ComfyUI or OpenWebUI are separate profiles when they should be activated independently. A profile can expose a `webui` endpoint on its own port when one of the profile's services actually serves that endpoint.
+Web UIs such as ComfyUI or OpenWebUI can also be services inside a multi-service profile when they must be activated and stopped together with the model services.
 
 ## Rejected alternatives
 
 - **Fully custom TOML profile format:** rejected because it makes Unum own a container schema that Compose already covers.
 - **Podman kube YAML:** rejected for v0 because it is Kubernetes-shaped, less natural for Docker viability, and introduces concepts Unum does not need.
 - **Multiple profile formats in v0:** rejected until Compose-compatible profiles prove insufficient.
+- **One service per profile:** rejected because real v0 workloads may require cooperating model and frontend containers.
 - **One fixed inference upstream port:** rejected because remote agents and web UIs need explicit endpoints and should fail safely when the requested profile is not running.
 
 ## Consequences
 
 - The current custom TOML profile loader becomes transitional and should be replaced or migrated.
 - Docker backend support becomes part of viable v0 planning because Compose is shared vocabulary across Docker and Podman.
-- Profile validation must reject files with zero services or more than one service, then check the accepted Compose subset plus `x-unum` metadata.
+- Profile validation must reject files with zero services, then check the accepted Compose subset plus `x-unum` metadata.
+- Operations, instances, and logs must account for one profile owning multiple runtime containers.
 - Unum must preserve configurable hostnames, IPs, paths, ports, TLS paths, and device mappings.
 - Running `unumd` itself in a container remains a separate deployment-model decision because it affects Podman/Docker socket access, host networking, paths, and device visibility.
