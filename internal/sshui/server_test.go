@@ -15,6 +15,8 @@ func TestDashboardViewShowsStatus(t *testing.T) {
 	cfg := config.Default()
 	cfg.ServerName = "lab"
 	cfg.Inference.ActiveProfile = "qwen"
+	cfg.Storage.State = t.TempDir()
+	cfg.Storage.Profiles = t.TempDir()
 
 	view := newDashboardModel(service.New(cfg, version.Version)).View()
 	for _, want := range []string{"Unum Server", "Server:     lab", "Runtime:    podman", "Active:     qwen"} {
@@ -27,6 +29,7 @@ func TestDashboardViewShowsStatus(t *testing.T) {
 func TestDashboardCanSwitchToTokensAndCreateToken(t *testing.T) {
 	cfg := config.Default()
 	cfg.Storage.State = t.TempDir()
+	cfg.Storage.Profiles = t.TempDir()
 	model := newDashboardModel(service.New(cfg, version.Version))
 
 	next, _ := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("6")})
