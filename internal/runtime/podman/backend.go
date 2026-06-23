@@ -34,6 +34,7 @@ type ContainerStatus struct {
 	Name    string
 	State   string
 	Health  string
+	Labels  map[string]string
 	Started time.Time
 }
 
@@ -88,6 +89,12 @@ func (b Backend) Create(ctx context.Context, p profile.Profile) (ContainerID, er
 	}
 	args := createArgs(p, svc)
 	out, err := b.runCommand(ctx, args...)
+	if isContainerNameConflict(err) {
+		if cleanupErr := b.removeStoppedContainer(ctx, profileContainerName(p, svc), p.ID); cleanupErr != nil {
+			return "", cleanupErr
+		}
+		out, err = b.runCommand(ctx, args...)
+	}
 	if err != nil {
 		return "", err
 	}
@@ -119,8 +126,11 @@ func (b Backend) Inspect(ctx context.Context, id ContainerID) (ContainerStatus, 
 		return ContainerStatus{}, err
 	}
 	var raw []struct {
-		ID    string `json:"Id"`
-		Name  string `json:"Name"`
+		ID     string `json:"Id"`
+		Name   string `json:"Name"`
+		Config struct {
+			Labels map[string]string `json:"Labels"`
+		} `json:"Config"`
 		State struct {
 			Status    string `json:"Status"`
 			StartedAt string `json:"StartedAt"`
@@ -140,6 +150,10 @@ func (b Backend) Inspect(ctx context.Context, id ContainerID) (ContainerStatus, 
 		Name:   strings.TrimPrefix(raw[0].Name, "/"),
 		State:  raw[0].State.Status,
 		Health: "unknown",
+		Labels: raw[0].Config.Labels,
+	}
+	if status.Labels == nil {
+		status.Labels = map[string]string{}
 	}
 	if raw[0].State.Health != nil && raw[0].State.Health.Status != "" {
 		status.Health = raw[0].State.Health.Status
@@ -177,13 +191,9 @@ func (b Backend) Logs(ctx context.Context, id ContainerID, opts LogOptions) (<-c
 }
 
 func createArgs(p profile.Profile, svc profile.Service) []string {
-	name := svc.ContainerName
-	if name == "" {
-		name = containerName(p.ID)
-	}
 	args := []string{
 		"create",
-		"--name", name,
+		"--name", profileContainerName(p, svc),
 		"--label", "unum.managed=true",
 		"--label", "unum.profile=" + p.ID,
 	}
@@ -222,6 +232,43 @@ func createArgs(p profile.Profile, svc profile.Service) []string {
 	args = append(args, svc.Image)
 	args = append(args, svc.Command...)
 	return args
+}
+
+func (b Backend) removeStoppedContainer(ctx context.Context, name, profileID string) error {
+	status, err := b.Inspect(ctx, ContainerID(name))
+	if err != nil {
+		if strings.Contains(err.Error(), "no such container") {
+			return nil
+		}
+		return fmt.Errorf("inspect existing container %q: %w", name, err)
+	}
+	if status.Labels["unum.managed"] != "true" || status.Labels["unum.profile"] != profileID {
+		return fmt.Errorf("container name %q is already used by container %s not managed by Unum profile %q", name, status.ID, profileID)
+	}
+	switch status.State {
+	case "configured", "created", "exited", "stopped":
+		if err := b.Remove(ctx, status.ID); err != nil {
+			return fmt.Errorf("remove stopped container %q (%s): %w", name, status.ID, err)
+		}
+		return nil
+	default:
+		return fmt.Errorf("container name %q is already used by %s container %s", name, status.State, status.ID)
+	}
+}
+
+func isContainerNameConflict(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	return strings.Contains(msg, "container name") && strings.Contains(msg, "already in use")
+}
+
+func profileContainerName(p profile.Profile, svc profile.Service) string {
+	if svc.ContainerName != "" {
+		return svc.ContainerName
+	}
+	return containerName(p.ID)
 }
 
 func containerName(profileID string) string {

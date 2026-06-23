@@ -2,9 +2,11 @@ package podman
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/trippwill/unum/internal/profile"
@@ -62,6 +64,102 @@ func TestCreateMapsProfileToPodmanArgs(t *testing.T) {
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("args = %#v", got)
+	}
+}
+
+func TestCreateRemovesExitedNameConflictAndRetries(t *testing.T) {
+	var calls [][]string
+	backend := Backend{run: func(_ context.Context, args ...string) ([]byte, error) {
+		calls = append(calls, append([]string(nil), args...))
+		switch len(calls) {
+		case 1:
+			return nil, errors.New(`creating container storage: the container name "unum-qwen" is already in use`)
+		case 2:
+			return []byte(`[{"Id":"old-container","Name":"/unum-qwen","Config":{"Labels":{"unum.managed":"true","unum.profile":"qwen"}},"State":{"Status":"exited"}}]`), nil
+		case 4:
+			return []byte("new-container\n"), nil
+		default:
+			return nil, nil
+		}
+	}}
+	p := profile.Profile{
+		ID: "qwen",
+		Services: map[string]profile.Service{
+			"qwen": {Image: "example", ContainerName: "unum-qwen"},
+		},
+	}
+
+	id, err := backend.Create(context.Background(), p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if id != "new-container" {
+		t.Fatalf("id = %q", id)
+	}
+	want := [][]string{
+		{"create", "--name", "unum-qwen", "--label", "unum.managed=true", "--label", "unum.profile=qwen", "example"},
+		{"inspect", "--type", "container", "unum-qwen"},
+		{"rm", "old-container"},
+		{"create", "--name", "unum-qwen", "--label", "unum.managed=true", "--label", "unum.profile=qwen", "example"},
+	}
+	if !reflect.DeepEqual(calls, want) {
+		t.Fatalf("calls = %#v", calls)
+	}
+}
+
+func TestCreateDoesNotReplaceRunningNameConflict(t *testing.T) {
+	var calls [][]string
+	backend := Backend{run: func(_ context.Context, args ...string) ([]byte, error) {
+		calls = append(calls, append([]string(nil), args...))
+		if len(calls) == 1 {
+			return nil, errors.New(`creating container storage: the container name "unum-qwen" is already in use`)
+		}
+		return []byte(`[{"Id":"old-container","Name":"/unum-qwen","Config":{"Labels":{"unum.managed":"true","unum.profile":"qwen"}},"State":{"Status":"running"}}]`), nil
+	}}
+	p := profile.Profile{
+		ID: "qwen",
+		Services: map[string]profile.Service{
+			"qwen": {Image: "example", ContainerName: "unum-qwen"},
+		},
+	}
+
+	if _, err := backend.Create(context.Background(), p); err == nil || !strings.Contains(err.Error(), "running container") {
+		t.Fatalf("err = %v", err)
+	}
+	want := [][]string{
+		{"create", "--name", "unum-qwen", "--label", "unum.managed=true", "--label", "unum.profile=qwen", "example"},
+		{"inspect", "--type", "container", "unum-qwen"},
+	}
+	if !reflect.DeepEqual(calls, want) {
+		t.Fatalf("calls = %#v", calls)
+	}
+}
+
+func TestCreateDoesNotRemoveUnmanagedNameConflict(t *testing.T) {
+	var calls [][]string
+	backend := Backend{run: func(_ context.Context, args ...string) ([]byte, error) {
+		calls = append(calls, append([]string(nil), args...))
+		if len(calls) == 1 {
+			return nil, errors.New(`creating container storage: the container name "unum-qwen" is already in use`)
+		}
+		return []byte(`[{"Id":"old-container","Name":"/unum-qwen","State":{"Status":"exited"}}]`), nil
+	}}
+	p := profile.Profile{
+		ID: "qwen",
+		Services: map[string]profile.Service{
+			"qwen": {Image: "example", ContainerName: "unum-qwen"},
+		},
+	}
+
+	if _, err := backend.Create(context.Background(), p); err == nil || !strings.Contains(err.Error(), "not managed by Unum") {
+		t.Fatalf("err = %v", err)
+	}
+	want := [][]string{
+		{"create", "--name", "unum-qwen", "--label", "unum.managed=true", "--label", "unum.profile=qwen", "example"},
+		{"inspect", "--type", "container", "unum-qwen"},
+	}
+	if !reflect.DeepEqual(calls, want) {
+		t.Fatalf("calls = %#v", calls)
 	}
 }
 
