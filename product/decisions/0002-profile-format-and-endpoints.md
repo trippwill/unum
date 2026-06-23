@@ -16,7 +16,7 @@ Profiles also need Unum-specific metadata: profile identity, endpoint purpose, h
 
 Use a Compose-compatible profile file as the v0 profile format, with Unum metadata in an `x-unum` extension block.
 
-Each v0 profile file describes exactly one service. Unum remains an active-profile switcher, not a general orchestrator.
+Each v0 profile file describes exactly one service. That service may expose multiple endpoints. Unum remains an active-profile switcher, not a general orchestrator.
 
 The service section owns container runtime shape:
 
@@ -88,6 +88,19 @@ Profiles may expose multiple endpoints. Endpoints are profile-owned and may use 
 
 Endpoint `url` values are client-facing URLs that Unum displays and can health-check. They are not container-internal URLs. Local-only endpoints may use loopback; endpoints intended for remote agents should use a reachable host name such as `unum.internal`.
 
+Multi-endpoint profiles are required for v0. For example, one profile may serve an SGLang diffusion endpoint and a small OpenAI-compatible LLM/frontend endpoint from the same service/container. Remote agents can then target the endpoint they need and fail clearly if that profile is not running.
+
+```yaml
+x-unum:
+  endpoints:
+    diffusion:
+      url: http://unum.internal:18100
+      health: /health
+    openai:
+      url: http://unum.internal:18101/v1
+      health: /health
+```
+
 Unum should not force all inference traffic through one upstream port. Different ports are useful for remote agents because a request to a coding model should fail if that model is not running, rather than silently hitting whatever profile happens to be active.
 
 Unum may still provide stable discovery, display, auth, and optional proxying for known endpoint kinds. The v0 product promise is:
@@ -97,7 +110,7 @@ Unum serves one active profile at a time.
 That profile may expose one or more explicit endpoints.
 ```
 
-Web UIs such as ComfyUI or OpenWebUI are separate profiles when they need their own process. A ComfyUI profile can expose a `webui` endpoint on its own port, but it should not be mixed into a vLLM profile unless the same service actually serves both endpoints.
+Web UIs such as ComfyUI or OpenWebUI are separate profiles when they need their own process. A profile can expose a `webui` endpoint on its own port, but only when the profile's single service actually serves that endpoint.
 
 ## Rejected alternatives
 
