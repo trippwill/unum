@@ -9,6 +9,7 @@
 - Keep hostnames, IPs, model paths, TLS paths, and device mappings configurable.
 - Use `/docs` only for user-facing docs; keep ADRs, briefs, feedback, and other product docs under `/product`.
 - Add an ADR only when a decision affects architecture boundaries, major dependencies, protocols, storage/deployment models, durable security/operational constraints, deferred obvious alternatives, or release scope.
+- Before v1, prefer replacement over compatibility fallbacks; after v1, breaking changes require a major version bump and planning must account for that.
 - Prefer clean architecture boundaries, but do not add future-only interfaces.
 - Ponytail rule: delete/stdlib/native first; add dependencies only when they remove real code.
 
