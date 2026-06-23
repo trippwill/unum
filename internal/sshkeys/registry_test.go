@@ -53,6 +53,25 @@ func TestStoreRejectsDuplicateActiveKey(t *testing.T) {
 	}
 }
 
+func TestStoreAcceptsSingleKeyAuthorizedKeysFile(t *testing.T) {
+	store := Store{Path: filepath.Join(t.TempDir(), "authorized-clients.json")}
+	pub := testAuthorizedKey(t)
+	authorizedKeys := append([]byte("# laptop key\n\n"), pub...)
+
+	if _, err := store.Add("laptop", AdminRole, authorizedKeys); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestStoreRejectsMultipleAuthorizedKeys(t *testing.T) {
+	store := Store{Path: filepath.Join(t.TempDir(), "authorized-clients.json")}
+	authorizedKeys := append(testAuthorizedKey(t), testAuthorizedKey(t)...)
+
+	if _, err := store.Add("laptop", AdminRole, authorizedKeys); err == nil {
+		t.Fatal("multiple keys were accepted")
+	}
+}
+
 func TestStoreUsesPrivateRegistryPermissions(t *testing.T) {
 	store := Store{Path: filepath.Join(t.TempDir(), "authorized-clients.json")}
 	if _, err := store.Add("laptop", AdminRole, testAuthorizedKey(t)); err != nil {

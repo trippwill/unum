@@ -164,14 +164,25 @@ func (s Store) Save(reg Registry) error {
 }
 
 func normalizePublicKey(data []byte) (string, error) {
-	key, _, _, rest, err := ssh.ParseAuthorizedKey(data)
-	if err != nil {
-		return "", fmt.Errorf("parse public key: %w", err)
+	var keys []ssh.PublicKey
+	for _, line := range bytes.Split(data, []byte("\n")) {
+		line = bytes.TrimSpace(line)
+		if len(line) == 0 || bytes.HasPrefix(line, []byte("#")) {
+			continue
+		}
+		key, _, _, rest, err := ssh.ParseAuthorizedKey(line)
+		if err != nil {
+			return "", fmt.Errorf("parse public key: %w", err)
+		}
+		if len(bytes.TrimSpace(rest)) != 0 {
+			return "", fmt.Errorf("public key line has trailing data")
+		}
+		keys = append(keys, key)
 	}
-	if len(bytes.TrimSpace(rest)) != 0 {
-		return "", fmt.Errorf("public key file must contain exactly one key")
+	if len(keys) != 1 {
+		return "", fmt.Errorf("public key file must contain exactly one key, found %d", len(keys))
 	}
-	return strings.TrimSpace(string(ssh.MarshalAuthorizedKey(key))), nil
+	return strings.TrimSpace(string(ssh.MarshalAuthorizedKey(keys[0]))), nil
 }
 
 func (s Store) now() time.Time {

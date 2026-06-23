@@ -20,8 +20,12 @@ sudo unumd init --config /etc/unum/unumd.toml --state /var/lib/unum --server-nam
 Add an SSH control-plane key:
 
 ```bash
-sudo unumd ssh add-key --config /etc/unum/unumd.toml --name laptop /home/YOU/.ssh/id_ed25519.pub
+sudo unumd ssh add-key --config /etc/unum/unumd.toml --name laptop /home/YOU/.ssh/authorized_keys
 ```
+
+`add-key` accepts a `.pub` file or an `authorized_keys` file containing exactly
+one public key. If `authorized_keys` has multiple keys, copy the wanted line to
+a temporary file and add that.
 
 Start the daemon:
 
