@@ -1,4 +1,4 @@
-# Operating unum v0
+# Operating unum
 
 ## Install
 
@@ -38,7 +38,8 @@ keys already registered. To register one key only, use `ssh add-key` with a
 single-key `.pub` file.
 
 Unum rejects `authorized_keys` entries with OpenSSH options such as `from=`,
-`command=`, or `restrict` because v0 does not enforce those restrictions.
+`command=`, or `restrict` because the current implementation does not enforce
+those restrictions.
 Unum also rejects SSH certificate entries for the same reason.
 
 Start the daemon:
@@ -88,9 +89,9 @@ dev_insecure_http = false
 Start from [`examples/profiles/qwen3-small-cpu.yaml`](../examples/profiles/qwen3-small-cpu.yaml).
 Profiles are Compose-compatible YAML: put container runtime settings under
 `services` and Unum metadata under `x-unum`. `unumd init` writes the same
-starter profile to the configured profiles directory. v0 accepts only the
-documented subset in the example profile; unsupported Compose keys fail
-validation instead of being ignored.
+starter profile to the configured profiles directory. The current implementation
+accepts only the documented subset in the example profile;
+unsupported Compose keys fail validation instead of being ignored.
 
 Hardware-specific examples such as [`qwen3-coder-b60.yaml`](../examples/profiles/qwen3-coder-b60.yaml)
 are examples only; copy and edit paths before installing them under the

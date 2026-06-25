@@ -14,9 +14,9 @@ Profiles also need Unum-specific metadata: profile identity, endpoint purpose, h
 
 ## Decision
 
-Use a Compose-compatible profile file as the v0 profile format, with Unum metadata in an `x-unum` extension block.
+Use a Compose-compatible profile file as the release-path profile format, with Unum metadata in an `x-unum` extension block.
 
-Each v0 profile file may describe one or more services. Multi-service, multi-container profiles are required for viable v0 workloads. Unum remains an active-profile switcher, not a general-purpose orchestrator: it starts, stops, validates, and displays one profile at a time, but a profile may contain multiple cooperating containers.
+Each release profile file may describe one or more services. Multi-service, multi-container profiles are required for `v0.1.0` marketability, not for proving Core. Unum remains an active-profile switcher, not a general-purpose orchestrator: it starts, stops, validates, and displays one profile at a time, but a profile may contain multiple cooperating containers.
 
 The `services` section owns container runtime shape:
 
@@ -128,7 +128,7 @@ Endpoint `url` values are client-facing URLs that Unum displays and can health-c
 
 Endpoint `service` values name the Compose service that backs the endpoint. `service` is required when a profile has more than one service and may be inferred when a profile has exactly one service.
 
-Multi-endpoint profiles are required for v0. For example, one profile may serve an SGLang diffusion endpoint and a small OpenAI-compatible LLM/frontend endpoint from cooperating services. Remote agents can then target the endpoint they need and fail clearly if that profile is not running.
+Multi-endpoint profiles are required for `v0.1.0`. For example, one profile may serve an SGLang diffusion endpoint and a small OpenAI-compatible LLM/frontend endpoint from cooperating services. Remote agents can then target the endpoint they need and fail clearly if that profile is not running.
 
 ```yaml
 x-unum:
@@ -145,7 +145,7 @@ x-unum:
 
 Unum should not force all inference traffic through one upstream port. Different ports are useful for remote agents because a request to a coding model should fail if that model is not running, rather than silently hitting another running service.
 
-Unum may still provide stable discovery, display, auth, and optional proxying for known endpoint kinds. The v0 product promise is:
+Unum may still provide stable discovery, display, auth, and optional proxying for known endpoint kinds. The `v0.1.0` product promise is:
 
 ```text
 Unum serves one running profile at a time.
@@ -158,15 +158,15 @@ Web UIs such as ComfyUI or OpenWebUI can also be services inside a multi-service
 ## Rejected alternatives
 
 - **Fully custom TOML profile format:** rejected because it makes Unum own a container schema that Compose already covers.
-- **Podman kube YAML:** rejected for v0 because it is Kubernetes-shaped, less natural for Docker viability, and introduces concepts Unum does not need.
-- **Multiple profile formats in v0:** rejected until Compose-compatible profiles prove insufficient.
-- **One service per profile:** rejected because real v0 workloads may require cooperating model and frontend containers.
+- **Podman kube YAML:** rejected for `v0.1.0` because it is Kubernetes-shaped, less natural for Docker viability, and introduces concepts Unum does not need.
+- **Multiple profile formats before `v0.1.0`:** rejected until Compose-compatible profiles prove insufficient.
+- **One service per profile:** rejected because real `v0.1.0` workloads may require cooperating model and frontend containers.
 - **One fixed inference upstream port:** rejected because remote agents and web UIs need explicit endpoints and should fail safely when the requested profile is not running.
 
 ## Consequences
 
 - The current custom TOML profile loader becomes transitional and should be replaced or migrated.
-- Docker backend support becomes part of viable v0 planning because Compose is shared vocabulary across Docker and Podman.
+- Docker backend support is part of `v0.1.0` planning because Compose is shared vocabulary across Docker and Podman.
 - Profile validation must reject files with zero services, then check the accepted Compose subset plus `x-unum` metadata.
 - Operations, instances, and logs must account for one profile owning multiple runtime containers.
 - Unum must preserve configurable hostnames, IPs, paths, ports, TLS paths, and device mappings.

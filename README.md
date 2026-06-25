@@ -7,7 +7,7 @@ Trusted-server local inference manager.
 Unum lets a trusted remote terminal control LLM services running on a dedicated
 Linux server without exposing container runtime details.
 
-## v0 shape
+## Current shape
 
 - rootful Fedora Linux + Podman
 - one daemon: `unumd`
@@ -15,6 +15,8 @@ Linux server without exposing container runtime details.
 - OpenAI-compatible `/openai/v1/*` inference endpoint with bearer-token auth
 - TOML config and profiles
 - JSON state for SSH keys and inference tokens
+
+The first planned release tag is **v0.1.0**.
 
 ## Development
 

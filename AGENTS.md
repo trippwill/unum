@@ -5,7 +5,9 @@
 - Every commit must build and pass tests.
 - Get a rubber duck review before committing.
 - Do not push without explicit user sign-off.
-- Keep `unumd` rootful for v0: root-owned `/etc/unum` and `/var/lib/unum`, rootful Podman.
+- Keep `unumd` rootful for `v0.1.0`: root-owned `/etc/unum` and `/var/lib/unum`, rootful container runtime.
+- Use **Core** for the internal engineering tracking milestone and `v0.1.0` for the first intended release tag; do not use `v0` alone as a roadmap bucket.
+- The product exists as planned releases, not internal engineering milestones.
 - Keep hostnames, IPs, model paths, TLS paths, and device mappings configurable.
 - Use `/docs` only for user-facing docs; keep ADRs, briefs, feedback, and other product docs under `/product`.
 - Add an ADR only when a decision affects architecture boundaries, major dependencies, protocols, storage/deployment models, durable security/operational constraints, deferred obvious alternatives, or release scope.
@@ -60,10 +62,10 @@ Default rootful paths are `/etc/unum/unumd.toml` and `/var/lib/unum`.
 
 - SSH control-plane auth uses Unum's own registered public-key registry, not system SSH users.
 - `ssh add-key` is strict: exactly one public key.
-- `ssh add-authorized-keys` imports all non-comment keys, skips duplicates, and rejects OpenSSH options and certificate keys because v0 does not enforce their restrictions.
+- `ssh add-authorized-keys` imports all non-comment keys, skips duplicates, and rejects OpenSSH options and certificate keys because the current implementation does not enforce their restrictions.
 - Inference tokens are shown once, stored as hashes, and identified later by metadata/prefix only.
 - The inference proxy validates Unum bearer tokens but strips `Authorization` and `Proxy-Authorization` before forwarding upstream.
 - `dev_insecure_http = true` is only allowed on loopback inference addresses; wildcard binds like `:8770` must be rejected.
 - Profile validation enforces a configured inference memory limit, defaulting to 32 GB, and explicit absolute device paths.
 - JSON registries are whole-file writes with `ponytail:` comments; add file locking only if concurrent admins matter.
-- In-memory operation/instance state is intentional for v0; persist it only when daemon restart recovery matters.
+- In-memory operation/instance state is intentional for Core; persist it only when daemon restart recovery matters.

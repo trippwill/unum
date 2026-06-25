@@ -1,4 +1,4 @@
-# Unum v0 Product Brief
+# Unum Product Brief
 
 ## Product
 
@@ -43,9 +43,20 @@ This is the main product distinction.
 
 ---
 
+## Roadmap terminology
+
+Use precise names:
+
+- **Core** is the internal engineering proof gate. It proves Unum can operate one trusted-server inference profile end-to-end. It is not a release tag.
+- **`v0.1.0`** is the first intended release tag. It follows Go/SemVer tagging conventions and should include the work required by Core plus the work needed for a marketable technical release.
+- The product exists as planned releases, not internal engineering milestones.
+- **`v0`** alone means only the pre-1.0 compatibility era. Do not use it as a roadmap bucket.
+
+---
+
 ## Target user
 
-### v0 user
+### `v0.1.0` user
 
 A technical user with:
 
@@ -60,7 +71,7 @@ This is initially for the `unum` server, but should be shaped so it can later be
 
 ---
 
-## v0 goals
+## `v0.1.0` goals
 
 ### Primary goals
 
@@ -74,20 +85,19 @@ This is initially for the `unum` server, but should be shaped so it can later be
 
 ### Secondary goals
 
-- Keep the backend abstraction clean enough to add Docker later.
+- Keep the backend abstraction clean enough to add Docker for `v0.1.0`.
 - Keep profile model independent of Podman.
 - Keep inference API compatible with OpenAI-style clients.
 - Make container runtime support an implementation detail.
 
 ---
 
-## Non-goals for v0
+## Non-goals before `v0.1.0`
 
-Do **not** build these yet:
+Do **not** build these yet unless a later release decision explicitly pulls them in:
 
 - local desktop GUI;
 - workstation-local inference;
-- Docker backend;
 - containerd backend;
 - Kubernetes backend;
 - multi-user hosted service;
@@ -135,7 +145,7 @@ ssh
 
 ---
 
-## v0 user experience
+## `v0.1.0` user experience
 
 ### First-time setup
 
@@ -167,7 +177,7 @@ Operations: idle
 
 ---
 
-## v0 screens
+## `v0.1.0` screens
 
 ### 1. Dashboard
 
@@ -279,7 +289,7 @@ Actions:
 - list token names/prefixes;
 - revoke token.
 
-Tokens have one simple v0 scope:
+Tokens have one simple scope:
 
 ```text
 inference
@@ -317,7 +327,7 @@ A Unum SSH client record:
 }
 ```
 
-For v0, one role is enough:
+For `v0.1.0`, one role is enough:
 
 ```text
 admin
@@ -403,7 +413,7 @@ Control HTTP/mTLS can come later.
 
 `unumd` should proxy or expose a stable inference endpoint.
 
-Recommended v0 endpoint:
+Recommended `v0.1.0` endpoint:
 
 ```text
 https://unum.internal:8770/openai/v1
@@ -417,7 +427,7 @@ Later explicit profile routing can be added:
 /profiles/{profileId}/openai/v1/...
 ```
 
-For v0:
+For `v0.1.0`:
 
 ```text
 running profile only
@@ -429,13 +439,13 @@ If no profile is running:
 503 Service Unavailable
 ```
 
-Do not let inference tokens auto-start stopped profiles in v0.
+Do not let inference tokens auto-start stopped profiles in `v0.1.0`.
 
 ---
 
 ## Profile model
 
-A v0 profile file uses Compose-compatible YAML with Unum metadata in `x-unum`.
+A profile file uses Compose-compatible YAML with Unum metadata in `x-unum`.
 
 Example:
 
@@ -485,16 +495,21 @@ type RuntimeBackend interface {
 }
 ```
 
-v0 implementation:
+Core implementation target:
 
 ```text
 PodmanBackend
 ```
 
-Future:
+`v0.1.0` implementation target:
 
 ```text
 DockerBackend
+```
+
+Future:
+
+```text
 ContainerdBackend
 KubernetesBackend
 ```
@@ -571,7 +586,7 @@ or another explicit configured path.
 
 ---
 
-## Packaging v0
+## Packaging for `v0.1.0`
 
 ### Binary
 
@@ -604,11 +619,11 @@ User=root
 WantedBy=multi-user.target
 ```
 
-Rootful is acceptable for v0 if the Podman workloads and device mappings require it. Later rootless can be explored.
+Rootful is acceptable for `v0.1.0` if workloads and device mappings require it. Later rootless can be explored.
 
 ---
 
-## v0 config
+## Initial config
 
 ```toml
 server_name = "unum"
@@ -636,7 +651,7 @@ retain_days = 14
 
 ---
 
-## MVP command surface
+## `v0.1.0` command surface
 
 Server-side:
 
@@ -658,11 +673,11 @@ unumctl start <profile>
 unumctl stop <profile>
 ```
 
-For v0, the TUI can be the main control surface.
+For `v0.1.0`, the TUI can be the main control surface.
 
 ---
 
-## v0 milestone plan
+## Core engineering proof plan
 
 ### Milestone 1: daemon skeleton
 
@@ -767,6 +782,32 @@ Done when a user can create a token in the TUI and paste it into an editor.
 
 ---
 
+## `v0.1.0` release intent
+
+`v0.1.0` should be the first tagged release that is useful to a technical user outside the current dogfood setup.
+
+Include:
+
+- the work required by Core;
+- install and operations docs;
+- clear rootful ownership and operator access behavior;
+- profile descriptions in CLI and TUI lists;
+- model repository and single-file model path UX;
+- profile-owned endpoint display and routing;
+- Compose-compatible multi-service profiles;
+- accelerator/device validation for explicit hardware paths;
+- Docker backend support.
+
+Defer unless explicitly pulled in:
+
+- built-in Hugging Face downloader;
+- profile template wizard;
+- browser or desktop UI;
+- public internet exposure;
+- OAuth/OIDC/RBAC.
+
+---
+
 ## Key product decisions
 
 ### Decision 1
@@ -779,7 +820,7 @@ The first UI is **SSH TUI**, not desktop GUI.
 
 ### Decision 3
 
-`unumd` serves the SSH TUI itself for v0.
+`unumd` serves the SSH TUI itself for `v0.1.0`.
 
 ### Decision 4
 
@@ -787,7 +828,7 @@ Inference access uses OpenAI-style bearer tokens.
 
 ### Decision 5
 
-Control access uses SSH public key auth in v0.
+Control access uses SSH public key auth for `v0.1.0`.
 
 ### Decision 6
 
@@ -795,15 +836,15 @@ mTLS control API is deferred until there is a native client or remote HTTP contr
 
 ### Decision 7
 
-Podman is the only v0 runtime backend.
+Podman is the Core runtime backend.
 
 ### Decision 8
 
-Docker/containerd support requires backend adapters, not profile model changes.
+Docker/containerd support requires backend adapters, not profile model changes. Docker is a `v0.1.0` release-scope decision; containerd stays future.
 
 ---
 
-## Sharp edges to accept in v0
+## Sharp edges to accept
 
 - Linux-only.
 - Podman-only.
@@ -817,6 +858,8 @@ Docker/containerd support requires backend adapters, not profile model changes.
 - No public internet story.
 
 These constraints are intentional. They protect the product from becoming a generic orchestration platform too early.
+
+For `v0.1.0`, revisit only the Podman-only and hardware-profile sharp edges against the release intent. Keep the rest unless real users are blocked.
 
 ---
 
@@ -837,4 +880,4 @@ Not:
 Here is another local chat app that happens to start containers.
 ```
 
-That distinction should drive the v0.
+That distinction should drive `v0.1.0`.

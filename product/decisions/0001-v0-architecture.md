@@ -1,4 +1,4 @@
-# Decision 0001: v0 architecture
+# Decision 0001: Core architecture
 
 ## Status
 
@@ -6,7 +6,7 @@ Accepted.
 
 ## Decision
 
-Unum v0 is a rootful Fedora Linux + Podman service with one daemon binary, `unumd`.
+Unum's Core engineering milestone is a rootful Fedora Linux + Podman service with one daemon binary, `unumd`.
 
 `unumd` owns:
 
@@ -28,6 +28,7 @@ The implementation keeps boring clean boundaries:
 
 ## Consequences
 
-- Podman CLI is the v0 backend. Go bindings can replace only `internal/runtime/podman` later if measured need appears.
-- Rootless, Docker, browser UI, RBAC, OAuth/OIDC, and public internet exposure are deferred.
+- Podman CLI is the Core backend. Go bindings can replace only `internal/runtime/podman` later if measured need appears.
+- Rootless, browser UI, RBAC, OAuth/OIDC, and public internet exposure are deferred.
+- Docker is not required to prove Core; `v0.1.0` release intent is tracked separately in the product brief.
 - Hostnames, IPs, model paths, TLS paths, memory limits, and GPU devices stay configurable.
