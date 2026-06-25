@@ -32,6 +32,7 @@ Useful tasks:
 mise run fmt
 mise run vet
 mise run precommit
+mise run integration-smoke
 ```
 
 Every commit should be buildable, have passing tests, use Conventional Commits,

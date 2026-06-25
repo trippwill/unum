@@ -23,6 +23,10 @@ run = "go vet ./..."
 description = "Run tests"
 run = "go test ./..."
 
+[tasks.integration-smoke]
+description = "Run explicit integration smoke tests"
+run = "go test -tags integration ./internal/integration"
+
 [tasks.build]
 description = "Build unumd"
 run = "go build -o bin/unumd ./cmd/unumd"
@@ -33,6 +37,7 @@ run = """
 go fmt ./...
 go vet ./...
 go test ./...
+mise run integration-smoke
 go build -o bin/unumd ./cmd/unumd
 """
 
@@ -42,5 +47,6 @@ run = """
 mise run fmt-check
 go vet ./...
 go test ./...
+mise run integration-smoke
 go build -o bin/unumd ./cmd/unumd
 """

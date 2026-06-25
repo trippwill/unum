@@ -161,3 +161,10 @@ curl -i http://127.0.0.1:8770/openai/v1/models
 
 The unauthenticated curl should return `401`. A valid token with no active
 running profile should return `503`.
+
+For a fast automated smoke test that exercises profile start, token validation,
+and inference proxying without real Podman or model downloads:
+
+```bash
+mise run integration-smoke
+```
