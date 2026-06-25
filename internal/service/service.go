@@ -146,7 +146,7 @@ func (s *Service) Status(context.Context) (Status, error) {
 }
 
 func (s *Service) ListProfiles(context.Context) ([]ProfileSummary, error) {
-	summaries, err := profile.LoadDir(s.cfg.Storage.Profiles)
+	summaries, err := profile.LoadDir(s.cfg.Storage.Profiles, s.profileValidationOptions())
 	if err != nil {
 		return nil, err
 	}
@@ -174,7 +174,7 @@ func (s *Service) ListProfiles(context.Context) ([]ProfileSummary, error) {
 }
 
 func (s *Service) ValidateProfile(ctx context.Context, id string) (profile.ValidationResult, error) {
-	profiles, err := profile.LoadDir(s.cfg.Storage.Profiles)
+	profiles, err := profile.LoadDir(s.cfg.Storage.Profiles, s.profileValidationOptions())
 	if err != nil {
 		return profile.ValidationResult{}, err
 	}
@@ -187,7 +187,7 @@ func (s *Service) ValidateProfile(ctx context.Context, id string) (profile.Valid
 }
 
 func (s *Service) ActivateProfile(ctx context.Context, id string) error {
-	_, validation, err := profile.Find(s.cfg.Storage.Profiles, id)
+	_, validation, err := profile.Find(s.cfg.Storage.Profiles, id, s.profileValidationOptions())
 	if err != nil {
 		return err
 	}
@@ -206,7 +206,7 @@ func (s *Service) ActivateProfile(ctx context.Context, id string) error {
 
 func (s *Service) StartProfile(ctx context.Context, id string) (OperationSummary, error) {
 	op := s.beginOperation(id, "start")
-	p, validation, err := profile.Find(s.cfg.Storage.Profiles, id)
+	p, validation, err := profile.Find(s.cfg.Storage.Profiles, id, s.profileValidationOptions())
 	if err != nil {
 		return s.failOperation(op.ID, "validating", err.Error()), err
 	}
@@ -266,6 +266,10 @@ func (s *Service) StartProfile(ctx context.Context, id string) (OperationSummary
 	}
 	s.mu.Unlock()
 	return s.succeedOperation(op.ID, "ready", string(containerID)), nil
+}
+
+func (s *Service) profileValidationOptions() profile.ValidationOptions {
+	return profile.ValidationOptions{MaxMemory: s.cfg.Profiles.MaxMemory}
 }
 
 func (s *Service) StopProfile(ctx context.Context, id string) (OperationSummary, error) {

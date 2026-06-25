@@ -65,7 +65,6 @@ func runInit(args []string) error {
 	fs.StringVar(&opts.ServerName, "server-name", "", "server name")
 	fs.StringVar(&opts.StateDir, "state", "", "state directory")
 	fs.StringVar(&opts.Profiles, "profiles", "", "profile directory")
-	fs.StringVar(&opts.Models, "models", "", "model directory")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}

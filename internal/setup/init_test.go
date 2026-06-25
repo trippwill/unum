@@ -46,7 +46,7 @@ func TestInitCreatesConfigStateHostKeyAndProfile(t *testing.T) {
 	}
 	modelsDir := filepath.Join(state, "models")
 	if !strings.Contains(string(profile), modelsDir+":/models:ro") {
-		t.Fatalf("profile does not use configured models directory %q", modelsDir)
+		t.Fatalf("profile does not use state model directory %q", modelsDir)
 	}
 
 	key, err := os.ReadFile(filepath.Join(state, "ssh", "host_ed25519"))

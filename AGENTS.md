@@ -64,6 +64,6 @@ Default rootful paths are `/etc/unum/unumd.toml` and `/var/lib/unum`.
 - Inference tokens are shown once, stored as hashes, and identified later by metadata/prefix only.
 - The inference proxy validates Unum bearer tokens but strips `Authorization` and `Proxy-Authorization` before forwarding upstream.
 - `dev_insecure_http = true` is only allowed on loopback inference addresses; wildcard binds like `:8770` must be rejected.
-- Profile validation enforces the 32 GB v0 inference memory limit and explicit absolute device paths.
+- Profile validation enforces a configured inference memory limit, defaulting to 32 GB, and explicit absolute device paths.
 - JSON registries are whole-file writes with `ponytail:` comments; add file locking only if concurrent admins matter.
 - In-memory operation/instance state is intentional for v0; persist it only when daemon restart recovery matters.

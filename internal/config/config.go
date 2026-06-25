@@ -16,6 +16,7 @@ type Config struct {
 	Inference  InferenceConfig `toml:"inference"`
 	Runtime    RuntimeConfig   `toml:"runtime"`
 	Storage    StorageConfig   `toml:"storage"`
+	Profiles   ProfilesConfig  `toml:"profiles"`
 	Logs       LogsConfig      `toml:"logs"`
 }
 
@@ -42,7 +43,10 @@ type RuntimeConfig struct {
 type StorageConfig struct {
 	State    string `toml:"state"`
 	Profiles string `toml:"profiles"`
-	Models   string `toml:"models"`
+}
+
+type ProfilesConfig struct {
+	MaxMemory string `toml:"max_memory"`
 }
 
 type LogsConfig struct {
@@ -69,7 +73,9 @@ func Default() Config {
 		Storage: StorageConfig{
 			State:    "/var/lib/unum",
 			Profiles: "/var/lib/unum/profiles",
-			Models:   "/var/lib/unum/models",
+		},
+		Profiles: ProfilesConfig{
+			MaxMemory: "32g",
 		},
 		Logs: LogsConfig{
 			RetainDays: 14,

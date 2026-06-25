@@ -25,7 +25,6 @@ type InitOptions struct {
 	ServerName string
 	StateDir   string
 	Profiles   string
-	Models     string
 }
 
 func Init(opts InitOptions) error {
@@ -39,15 +38,12 @@ func Init(opts InitOptions) error {
 	if opts.StateDir != "" {
 		cfg.Storage.State = opts.StateDir
 		cfg.Storage.Profiles = filepath.Join(opts.StateDir, "profiles")
-		cfg.Storage.Models = filepath.Join(opts.StateDir, "models")
 		cfg.SSHTUI.HostKey = filepath.Join(opts.StateDir, "ssh", "host_ed25519")
 	}
 	if opts.Profiles != "" {
 		cfg.Storage.Profiles = opts.Profiles
 	}
-	if opts.Models != "" {
-		cfg.Storage.Models = opts.Models
-	}
+	modelsDir := filepath.Join(cfg.Storage.State, "models")
 
 	if err := mkdirAll(filepath.Dir(opts.ConfigPath), 0o755); err != nil {
 		return err
@@ -58,7 +54,7 @@ func Init(opts InitOptions) error {
 	}{
 		{cfg.Storage.State, 0o750},
 		{cfg.Storage.Profiles, 0o750},
-		{cfg.Storage.Models, 0o750},
+		{modelsDir, 0o750},
 		{filepath.Join(cfg.Storage.State, "ssh"), 0o700},
 		{filepath.Join(cfg.Storage.State, "tokens"), 0o700},
 		{filepath.Join(cfg.Storage.State, "logs"), 0o750},
@@ -74,7 +70,7 @@ func Init(opts InitOptions) error {
 	if err := writeHostKeyIfMissing(cfg.SSHTUI.HostKey); err != nil {
 		return err
 	}
-	if err := writeProfileIfMissing(filepath.Join(cfg.Storage.Profiles, "qwen3-small-cpu.yaml"), cfg); err != nil {
+	if err := writeProfileIfMissing(filepath.Join(cfg.Storage.Profiles, "qwen3-small-cpu.yaml"), modelsDir); err != nil {
 		return err
 	}
 	return nil
@@ -116,8 +112,8 @@ func writeHostKeyIfMissing(path string) error {
 	return nil
 }
 
-func writeProfileIfMissing(path string, cfg config.Config) error {
-	profile := bytes.ReplaceAll(starterProfile, []byte(starterProfileDefaultModelsDir), []byte(cfg.Storage.Models))
+func writeProfileIfMissing(path string, modelsDir string) error {
+	profile := bytes.ReplaceAll(starterProfile, []byte(starterProfileDefaultModelsDir), []byte(modelsDir))
 	return writeFileIfMissing(path, profile, 0o644)
 }
 

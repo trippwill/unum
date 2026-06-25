@@ -58,6 +58,8 @@ ssh -p 2222 unum.internal
 
 Start from [`examples/unumd.toml`](../examples/unumd.toml). Hostnames, IPs,
 ports, model paths, TLS paths, and device mappings are deployment config.
+Profile memory validation defaults to `32g`; raise `[profiles].max_memory` only
+for hosts intended to run larger profiles.
 
 For local smoke testing, loopback HTTP inference is allowed:
 
@@ -86,6 +88,10 @@ starter profile to the configured profiles directory. v0 accepts only the
 documented subset in the example profile; unsupported Compose keys fail
 validation instead of being ignored.
 
+Hardware-specific examples such as [`qwen3-coder-b60.yaml`](../examples/profiles/qwen3-coder-b60.yaml)
+are examples only; copy and edit paths before installing them under the
+configured profiles directory.
+
 Validation:
 
 ```bash
@@ -93,14 +99,17 @@ sudo unumd profiles list --config /etc/unum/unumd.toml
 sudo unumd profiles validate --config /etc/unum/unumd.toml qwen3-small-cpu
 ```
 
-The starter profile uses `ghcr.io/ggml-org/llama.cpp:server` and expects this
-model file:
+The starter profile uses `ghcr.io/ggml-org/llama.cpp:server` and bind-mounts
+the init-created state model directory at `/models`. Put this model file there
+for the smoke test:
 
 ```text
 /var/lib/unum/models/Qwen_Qwen3-0.6B-Q4_K_M.gguf
 ```
 
-Validation fails until the `x-unum.models` paths exist.
+Profile validation checks the Compose-shaped profile, not whether the command's
+container-internal model path exists. Compose volumes and devices are the
+runtime source of truth.
 
 For a direct smoke-test download:
 

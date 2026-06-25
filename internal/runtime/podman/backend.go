@@ -209,6 +209,9 @@ func createArgs(p profile.Profile, svc profile.Service) []string {
 	if svc.ShmSize != "" {
 		args = append(args, "--shm-size", svc.ShmSize)
 	}
+	if svc.OOMScoreAdj != nil {
+		args = append(args, "--oom-score-adj", fmt.Sprint(*svc.OOMScoreAdj))
+	}
 	envNames := make([]string, 0, len(svc.Environment))
 	for name := range svc.Environment {
 		envNames = append(envNames, name)
@@ -218,7 +221,11 @@ func createArgs(p profile.Profile, svc profile.Service) []string {
 		args = append(args, "--env", name+"="+svc.Environment[name])
 	}
 	for _, volume := range svc.Volumes {
-		args = append(args, "--volume", volume)
+		if volume.Short != "" {
+			args = append(args, "--volume", volume.Short)
+			continue
+		}
+		args = append(args, "--mount", bindMountArg(volume))
 	}
 	for _, device := range svc.Devices {
 		args = append(args, "--device", device)
@@ -232,6 +239,14 @@ func createArgs(p profile.Profile, svc profile.Service) []string {
 	args = append(args, svc.Image)
 	args = append(args, svc.Command...)
 	return args
+}
+
+func bindMountArg(volume profile.Volume) string {
+	parts := []string{"type=bind", "source=" + volume.Source, "target=" + volume.Target}
+	if volume.ReadOnly {
+		parts = append(parts, "readonly")
+	}
+	return strings.Join(parts, ",")
 }
 
 func (b Backend) removeStoppedContainer(ctx context.Context, name, profileID string) error {

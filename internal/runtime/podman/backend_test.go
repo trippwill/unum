@@ -14,6 +14,7 @@ import (
 
 func TestCreateMapsProfileToPodmanArgs(t *testing.T) {
 	var got []string
+	oomScoreAdj := 900
 	backend := Backend{run: func(_ context.Context, args ...string) ([]byte, error) {
 		got = append([]string(nil), args...)
 		return []byte("abc123\n"), nil
@@ -25,11 +26,12 @@ func TestCreateMapsProfileToPodmanArgs(t *testing.T) {
 				Image:        "example/llm:latest",
 				NetworkMode:  "host",
 				Devices:      []string{"/dev/dri/renderD128"},
-				Volumes:      []string{"/models:/models:ro"},
+				Volumes:      profile.Volumes{{Short: "/models:/models:ro"}, {Type: "bind", Source: "/cache/hf", Target: "/root/.cache/huggingface", ReadOnly: true}},
 				Environment:  map[string]string{"B": "2", "A": "1"},
 				MemLimit:     "32g",
 				MemswapLimit: "32g",
 				ShmSize:      "8g",
+				OOMScoreAdj:  &oomScoreAdj,
 				SecurityOpt:  []string{"label=disable"},
 				Entrypoint:   "/bin/bash",
 				Command:      []string{"serve", "--port", "18080"},
@@ -53,9 +55,11 @@ func TestCreateMapsProfileToPodmanArgs(t *testing.T) {
 		"--memory", "32g",
 		"--memory-swap", "32g",
 		"--shm-size", "8g",
+		"--oom-score-adj", "900",
 		"--env", "A=1",
 		"--env", "B=2",
 		"--volume", "/models:/models:ro",
+		"--mount", "type=bind,source=/cache/hf,target=/root/.cache/huggingface,readonly",
 		"--device", "/dev/dri/renderD128",
 		"--security-opt", "label=disable",
 		"--entrypoint", "/bin/bash",

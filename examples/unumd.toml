@@ -20,7 +20,9 @@ backend = "podman"
 [storage]
 state = "/var/lib/unum"
 profiles = "/var/lib/unum/profiles"
-models = "/var/lib/unum/models"
+
+[profiles]
+max_memory = "32g"
 
 [logs]
 retain_days = 14

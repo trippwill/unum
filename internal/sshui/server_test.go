@@ -137,8 +137,6 @@ x-unum:
       service: ` + id + `
       url: http://127.0.0.1:18080/v1
       health: /health
-  models:
-    - ` + model + `
 `)
 	if err := os.WriteFile(path, data, 0o644); err != nil {
 		t.Fatal(err)

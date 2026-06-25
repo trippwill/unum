@@ -1,0 +1,65 @@
+services:
+  qwen3-coder-b60:
+    image: docker.io/intel/llm-scaler-vllm:0.14.0-b8.3.1
+    container_name: unum-qwen3-coder-b60
+    network_mode: host
+    security_opt: ["label=disable"]
+    devices:
+      - /dev/dri/renderD129:/dev/dri/renderD129
+    volumes:
+      - type: bind
+        source: /dev/dri/card0
+        target: /dev/dri/card0
+      - type: bind
+        source: /dev/dri/by-path/pci-0000:12:00.0-card
+        target: /dev/dri/by-path/pci-0000:12:00.0-card
+      - type: bind
+        source: /dev/dri/by-path/pci-0000:12:00.0-render
+        target: /dev/dri/by-path/pci-0000:12:00.0-render
+      - type: bind
+        source: /srv/unum/models/llm-scaler
+        target: /llm/models
+        read_only: true
+      - type: bind
+        source: /srv/unum/cache/huggingface
+        target: /root/.cache/huggingface
+    shm_size: 8g
+    mem_limit: 32g
+    memswap_limit: 64g
+    oom_score_adj: 900
+    environment:
+      HF_HOME: /root/.cache/huggingface
+      VLLM_ALLOW_LONG_MAX_MODEL_LEN: "1"
+      VLLM_WORKER_MULTIPROC_METHOD: spawn
+      VLLM_OFFLOAD_WEIGHTS_BEFORE_QUANT: "1"
+    entrypoint: /bin/bash
+    command:
+      - -c
+      - |
+        source /opt/intel/oneapi/setvars.sh --force >/dev/null 2>&1 || true
+        vllm serve /llm/models/Qwen3-Coder-30B-A3B-Instruct \
+          --served-model-name qwen3-coder-b60 \
+          --dtype=float16 \
+          --enforce-eager \
+          --host 0.0.0.0 \
+          --port 18081 \
+          --disable-sliding-window \
+          --gpu-memory-util=0.9 \
+          --no-enable-prefix-caching \
+          --max-model-len=52288 \
+          --max-num-batched-tokens=4096 \
+          --disable-log-requests \
+          --block-size 64 \
+          --quantization sym_int4 \
+          --enable-auto-tool-choice \
+          --tool-call-parser qwen3_coder \
+          -tp=1
+
+x-unum:
+  id: qwen3-coder-b60
+  name: Qwen3 Coder B60
+  endpoints:
+    openai:
+      service: qwen3-coder-b60
+      url: http://127.0.0.1:18081/v1
+      health: /health

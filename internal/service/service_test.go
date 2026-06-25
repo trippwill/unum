@@ -182,7 +182,7 @@ func TestTailLogsRejectsUnknownInstance(t *testing.T) {
 
 func TestStartProfileRejectsInvalidProfile(t *testing.T) {
 	dir := t.TempDir()
-	writeServiceProfile(t, filepath.Join(dir, "qwen.yaml"), "qwen", filepath.Join(t.TempDir(), "missing"))
+	writeInvalidServiceProfile(t, filepath.Join(dir, "qwen.yaml"))
 	cfg := config.Default()
 	cfg.Storage.Profiles = dir
 	svc := New(cfg, "test-version", WithRuntimeBackend(&fakeRuntime{}))
@@ -193,6 +193,71 @@ func TestStartProfileRejectsInvalidProfile(t *testing.T) {
 	}
 	if op.State != "failed" || op.Phase != "validating" {
 		t.Fatalf("operation = %+v", op)
+	}
+}
+
+func writeInvalidServiceProfile(t *testing.T, path string) {
+	t.Helper()
+	data := []byte(`services:
+  qwen:
+    image: example
+    volumes:
+      - relative:/models:ro
+    command: ["serve"]
+x-unum:
+  id: qwen
+  name: qwen
+  endpoints:
+    openai:
+      service: qwen
+      url: http://127.0.0.1:18080/v1
+      health: /health
+`)
+	if err := os.WriteFile(path, data, 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestListProfilesUsesConfiguredMemoryLimit(t *testing.T) {
+	dir := t.TempDir()
+	model := t.TempDir()
+	writeLargeMemoryProfile(t, filepath.Join(dir, "qwen.yaml"), model)
+	cfg := config.Default()
+	cfg.Storage.Profiles = dir
+	cfg.Profiles.MaxMemory = "64g"
+	svc := New(cfg, "test-version", WithRuntimeBackend(&fakeRuntime{}))
+
+	profiles, err := svc.ListProfiles(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(profiles) != 1 || !profiles[0].Valid {
+		t.Fatalf("profiles = %+v", profiles)
+	}
+}
+
+func writeLargeMemoryProfile(t *testing.T, path, model string) {
+	t.Helper()
+	data := []byte(`services:
+  qwen:
+    image: example
+    network_mode: host
+    volumes:
+      - ` + model + `:/models:ro
+    mem_limit: 64g
+    memswap_limit: 128g
+    command: ["serve"]
+x-unum:
+  id: qwen
+  name: qwen
+  endpoints:
+    openai:
+      service: qwen
+      url: http://127.0.0.1:18080/v1
+      health: /health
+`)
+	if err := os.WriteFile(path, data, 0o644); err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -359,8 +424,6 @@ x-unum:
       service: ` + id + `
       url: http://127.0.0.1:18080/v1
       health: /health
-  models:
-    - ` + model + `
 `)
 	if err := os.WriteFile(path, data, 0o644); err != nil {
 		t.Fatal(err)
@@ -392,8 +455,6 @@ x-unum:
       service: diffusion
       url: http://127.0.0.1:18100
       health: /health
-  models:
-    - ` + model + `
 `)
 	if err := os.WriteFile(path, data, 0o644); err != nil {
 		t.Fatal(err)

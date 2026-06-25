@@ -448,7 +448,7 @@ services:
     container_name: unum-qwen3-small-cpu
     network_mode: host
     volumes:
-      - /laser/ai/models:/models:ro
+      - /srv/unum/models:/models:ro
     mem_limit: 4g
     memswap_limit: 4g
     command: ["--model", "/models/Qwen_Qwen3-0.6B-Q4_K_M.gguf", "--host", "127.0.0.1", "--port", "18080"]
@@ -461,8 +461,6 @@ x-unum:
       service: qwen3-small-cpu
       url: http://127.0.0.1:18080/v1
       health: /health
-  models:
-    - /laser/ai/models/Qwen_Qwen3-0.6B-Q4_K_M.gguf
 ```
 
 For the `unum` server, later XPU profiles can use the same structure with devices added.
@@ -567,10 +565,10 @@ For rootful server daemon:
   └── logs/
 ```
 
-For the current `unum` setup, profile files may also be sourced from:
+For a custom setup, profile files may also be sourced from:
 
 ```text
-/beacon/ai/unum/profiles
+/srv/unum/profiles
 ```
 
 or another explicit configured path.
@@ -636,7 +634,6 @@ backend = "podman"
 [storage]
 state = "/var/lib/unum"
 profiles = "/var/lib/unum/profiles"
-models = "/laser/ai/models"
 
 [logs]
 retain_days = 14

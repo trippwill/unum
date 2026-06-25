@@ -10,7 +10,7 @@ Supersedes the custom TOML profile model in the product brief and the `.toml` pr
 
 Unum profiles must replace hand-written `podman run` and `docker run` scripts for local AI workloads. Real profiles need runtime details such as images, host networking, devices, mounts, environment variables, shared memory, memory limits, entrypoints, shell commands, and security options.
 
-Profiles also need Unum-specific metadata: profile identity, endpoint purpose, health checks, model paths, and which endpoint a remote agent or user should call.
+Profiles also need Unum-specific metadata: profile identity, endpoint purpose, health checks, and which endpoint a remote agent or user should call.
 
 ## Decision
 
@@ -35,8 +35,6 @@ The `x-unum` section owns product metadata:
 - profile ID and display name;
 - endpoint definitions;
 - health checks;
-- model paths or labels;
-- device requirements that Unum should validate before launch.
 
 Example:
 
@@ -48,13 +46,21 @@ services:
     network_mode: host
     security_opt: ["label=disable"]
     devices:
-      - /dev/dri/renderD128:/dev/dri/renderD128
+      - /dev/dri/renderD129:/dev/dri/renderD129
     volumes:
-      - /laser/ai/models/llm-scaler:/llm/models:ro
-      - /laser/ai/cache/hf:/root/.cache/huggingface
+      - type: bind
+        source: /dev/dri/by-path/pci-0000:12:00.0-render
+        target: /dev/dri/by-path/pci-0000:12:00.0-render
+      - type: bind
+        source: /srv/unum/models/llm-scaler
+        target: /llm/models
+        read_only: true
+      - type: bind
+        source: /srv/unum/cache/huggingface
+        target: /root/.cache/huggingface
     shm_size: 8g
     mem_limit: 32g
-    memswap_limit: 32g
+    memswap_limit: 64g
     oom_score_adj: 900
     environment:
       HF_HOME: /root/.cache/huggingface
@@ -65,7 +71,7 @@ services:
       - |
         source /opt/intel/oneapi/setvars.sh --force >/dev/null 2>&1 || true
         vllm serve /llm/models/Qwen3-Coder-30B-A3B-Instruct \
-          --served-model-name battery-qwen3-coder-1x \
+          --served-model-name qwen3-coder-b60 \
           --host 0.0.0.0 \
           --port 18081
 
@@ -76,10 +82,6 @@ x-unum:
     openai:
       url: http://unum.internal:18081/v1
       health: /health
-  models:
-    - /laser/ai/models/llm-scaler/Qwen3-Coder-30B-A3B-Instruct
-  required_devices:
-    - /dev/dri/by-path/pci-0000:12:00.0-render
 ```
 
 Multi-service example:
@@ -93,7 +95,7 @@ services:
     devices:
       - /dev/dri/renderD128:/dev/dri/renderD128
     volumes:
-      - /laser/ai/models/diffusion:/models:ro
+      - /srv/unum/models/diffusion:/models:ro
     command: ["serve-diffusion", "--host", "0.0.0.0", "--port", "18100"]
 
   frontend-llm:
@@ -101,7 +103,7 @@ services:
     container_name: unum-frontend-llm
     network_mode: host
     volumes:
-      - /laser/ai/models/small-llm:/models:ro
+      - /srv/unum/models/small-llm:/models:ro
     command: ["serve-openai", "--host", "0.0.0.0", "--port", "18101"]
 
 x-unum:
