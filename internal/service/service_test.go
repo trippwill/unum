@@ -22,7 +22,6 @@ func TestStatusUsesConfig(t *testing.T) {
 	cfg.Inference.Address = ":8770"
 	cfg.Inference.BasePath = "/openai/v1/"
 	cfg.Inference.DevInsecureHTTP = true
-	cfg.Inference.ActiveProfile = "qwen3"
 
 	got, err := New(cfg, "test-version").Status(context.Background())
 	if err != nil {
@@ -35,7 +34,7 @@ func TestStatusUsesConfig(t *testing.T) {
 	if got.InferenceEndpoint != "http://localhost:8770/openai/v1" {
 		t.Fatalf("InferenceEndpoint = %q", got.InferenceEndpoint)
 	}
-	if got.ActiveProfile != "qwen3" || got.Operations != "idle" {
+	if got.RunningProfile != "" || got.Operations != "idle" {
 		t.Fatalf("unexpected status: %+v", got)
 	}
 }
@@ -69,23 +68,24 @@ func TestListProfilesUsesConfiguredDirectory(t *testing.T) {
 	}
 }
 
-func TestActivateProfileUpdatesStatus(t *testing.T) {
+func TestStartProfileUpdatesRunningStatus(t *testing.T) {
 	dir := t.TempDir()
 	model := t.TempDir()
 	writeServiceProfile(t, filepath.Join(dir, "qwen.yaml"), "qwen", model)
 	cfg := config.Default()
 	cfg.Storage.Profiles = dir
-	svc := New(cfg, "test-version")
+	runtime := &fakeRuntime{status: podman.ContainerStatus{ID: "container-1", Name: "unum-qwen", State: "running", Health: "healthy"}}
+	svc := New(cfg, "test-version", WithRuntimeBackend(runtime))
 
-	if err := svc.ActivateProfile(context.Background(), "qwen"); err != nil {
+	if _, err := svc.StartProfile(context.Background(), "qwen"); err != nil {
 		t.Fatal(err)
 	}
 	status, err := svc.Status(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if status.ActiveProfile != "qwen" {
-		t.Fatalf("ActiveProfile = %q", status.ActiveProfile)
+	if status.RunningProfile != "qwen" {
+		t.Fatalf("RunningProfile = %q", status.RunningProfile)
 	}
 }
 
@@ -143,6 +143,55 @@ func TestStartAndStopProfileRecordsOperationsAndInstance(t *testing.T) {
 		if !contains(phases, phase) {
 			t.Fatalf("events missing %q: %v", phase, phases)
 		}
+	}
+}
+
+func TestStartProfileRejectsWhenAnotherProfileIsRunning(t *testing.T) {
+	dir := t.TempDir()
+	model := t.TempDir()
+	writeServiceProfile(t, filepath.Join(dir, "qwen.yaml"), "qwen", model)
+	writeServiceProfile(t, filepath.Join(dir, "mistral.yaml"), "mistral", model)
+	cfg := config.Default()
+	cfg.Storage.Profiles = dir
+	runtime := &fakeRuntime{status: podman.ContainerStatus{ID: "container-1", Name: "unum-qwen", State: "running", Health: "healthy"}}
+	svc := New(cfg, "test-version", WithRuntimeBackend(runtime))
+	if _, err := svc.StartProfile(context.Background(), "qwen"); err != nil {
+		t.Fatal(err)
+	}
+
+	op, err := svc.StartProfile(context.Background(), "mistral")
+	if err == nil {
+		t.Fatal("StartProfile accepted a second running profile")
+	}
+	if op.State != "failed" || op.Phase != "checking state" {
+		t.Fatalf("operation = %+v", op)
+	}
+	if !strings.Contains(err.Error(), `profile "qwen" is already running`) {
+		t.Fatalf("error = %v", err)
+	}
+}
+
+func TestStartProfileRejectsAlreadyRunningProfile(t *testing.T) {
+	dir := t.TempDir()
+	model := t.TempDir()
+	writeServiceProfile(t, filepath.Join(dir, "qwen.yaml"), "qwen", model)
+	cfg := config.Default()
+	cfg.Storage.Profiles = dir
+	runtime := &fakeRuntime{status: podman.ContainerStatus{ID: "container-1", Name: "unum-qwen", State: "running", Health: "healthy"}}
+	svc := New(cfg, "test-version", WithRuntimeBackend(runtime))
+	if _, err := svc.StartProfile(context.Background(), "qwen"); err != nil {
+		t.Fatal(err)
+	}
+
+	op, err := svc.StartProfile(context.Background(), "qwen")
+	if err == nil {
+		t.Fatal("StartProfile accepted an already-running profile")
+	}
+	if op.State != "failed" || op.Phase != "checking state" {
+		t.Fatalf("operation = %+v", op)
+	}
+	if !strings.Contains(err.Error(), `profile "qwen" is already running`) {
+		t.Fatalf("error = %v", err)
 	}
 }
 

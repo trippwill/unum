@@ -9,7 +9,6 @@ host_key = "/var/lib/unum/ssh/host_ed25519"
 enabled = true
 address = "127.0.0.1:8770"
 base_path = "/openai/v1"
-active_profile = ""
 tls_cert = ""
 tls_key = ""
 dev_insecure_http = true

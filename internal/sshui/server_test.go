@@ -19,12 +19,11 @@ import (
 func TestDashboardViewShowsStatus(t *testing.T) {
 	cfg := config.Default()
 	cfg.ServerName = "lab"
-	cfg.Inference.ActiveProfile = "qwen"
 	cfg.Storage.State = t.TempDir()
 	cfg.Storage.Profiles = t.TempDir()
 
 	view := newDashboardModel(service.New(cfg, version.Version)).View()
-	for _, want := range []string{"Unum Server", "Server:     lab", "Runtime:    podman", "Active:     qwen"} {
+	for _, want := range []string{"Unum Server", "Server:     lab", "Runtime:    podman", "Running:    -"} {
 		if !strings.Contains(view, want) {
 			t.Fatalf("View() missing %q:\n%s", want, view)
 		}

@@ -61,6 +61,10 @@ ports, model paths, TLS paths, and device mappings are deployment config.
 Profile memory validation defaults to `32g`; raise `[profiles].max_memory` only
 for hosts intended to run larger profiles.
 
+Before v1, config shape may still change. If upgrading an older test install,
+remove stale `[inference].active_profile` entries; starting a profile now makes
+it the running inference target.
+
 For local smoke testing, loopback HTTP inference is allowed:
 
 ```toml

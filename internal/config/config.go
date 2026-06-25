@@ -30,7 +30,6 @@ type InferenceConfig struct {
 	Enabled         bool   `toml:"enabled"`
 	Address         string `toml:"address"`
 	BasePath        string `toml:"base_path"`
-	ActiveProfile   string `toml:"active_profile"`
 	TLSCert         string `toml:"tls_cert"`
 	TLSKey          string `toml:"tls_key"`
 	DevInsecureHTTP bool   `toml:"dev_insecure_http"`

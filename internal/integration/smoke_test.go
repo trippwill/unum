@@ -43,9 +43,6 @@ func TestProfileTokenInferenceSmoke(t *testing.T) {
 	if _, err := svc.StartProfile(context.Background(), "smoke"); err != nil {
 		t.Fatal(err)
 	}
-	if err := svc.ActivateProfile(context.Background(), "smoke"); err != nil {
-		t.Fatal(err)
-	}
 	created, err := svc.CreateInferenceToken(context.Background(), "smoke")
 	if err != nil {
 		t.Fatal(err)

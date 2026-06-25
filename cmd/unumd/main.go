@@ -97,7 +97,7 @@ func runStatus(args []string) error {
 	fmt.Printf("Runtime: %s\n", status.RuntimeBackend)
 	fmt.Printf("SSH: %s\n", status.SSHAddress)
 	fmt.Printf("Inference: %s\n", status.InferenceEndpoint)
-	fmt.Printf("Active: %s\n", status.ActiveProfile)
+	fmt.Printf("Running: %s\n", status.RunningProfile)
 	fmt.Printf("Operations: %s\n", status.Operations)
 	return nil
 }

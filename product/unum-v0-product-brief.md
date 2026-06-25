@@ -65,7 +65,7 @@ This is initially for the `unum` server, but should be shaped so it can later be
 ### Primary goals
 
 - Manage LLM serving profiles on a trusted Linux server.
-- Start, stop, restart, validate, and activate profiles.
+- Start, stop, restart, and validate profiles.
 - Stream logs from running inference containers.
 - Show server/runtime/model/profile health.
 - Generate and revoke OpenAI-compatible inference tokens.
@@ -191,7 +191,7 @@ Unum Server
 Server:      unum
 Runtime:     Podman
 Backend:     CPU
-Active:      qwen3-small-cpu
+Running:     qwen3-small-cpu
 Inference:   https://unum.internal:8770/openai/v1
 State:       Ready
 ```
@@ -205,7 +205,6 @@ Actions:
 - start;
 - stop;
 - restart;
-- activate;
 - validate;
 - view config;
 - view logs.
@@ -346,7 +345,6 @@ They cannot:
 
 - start profiles;
 - stop profiles;
-- activate profiles;
 - pull images;
 - create more tokens;
 - read control logs;
@@ -411,7 +409,7 @@ Recommended v0 endpoint:
 https://unum.internal:8770/openai/v1
 ```
 
-The active profile receives default traffic.
+The running profile receives default traffic.
 
 Later explicit profile routing can be added:
 
@@ -422,10 +420,10 @@ Later explicit profile routing can be added:
 For v0:
 
 ```text
-active profile only
+running profile only
 ```
 
-If no profile is active or running:
+If no profile is running:
 
 ```text
 503 Service Unavailable
@@ -520,8 +518,6 @@ type ControlService interface {
     StartProfile(ctx context.Context, id string) (OperationID, error)
     StopProfile(ctx context.Context, id string) (OperationID, error)
     RestartProfile(ctx context.Context, id string) (OperationID, error)
-    ActivateProfile(ctx context.Context, id string) error
-
     ListInstances(ctx context.Context) ([]InstanceSummary, error)
     TailLogs(ctx context.Context, instanceID string, lines int) ([]LogLine, error)
     StreamLogs(ctx context.Context, instanceID string) (<-chan LogLine, error)
@@ -626,7 +622,6 @@ host_key = "/var/lib/unum/ssh/host_ed25519"
 enabled = true
 address = "192.168.31.10:8770"
 base_path = "/openai/v1"
-active_profile = "qwen3-small-cpu"
 
 [runtime]
 backend = "podman"
@@ -743,9 +738,9 @@ ready
 Deliver:
 
 - OpenAI-compatible reverse proxy;
-- active profile routing;
+- running profile routing;
 - bearer token middleware;
-- 503 when no active running profile.
+- 503 when no profile is running.
 
 Done when:
 

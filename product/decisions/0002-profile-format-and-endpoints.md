@@ -143,17 +143,17 @@ x-unum:
       health: /health
 ```
 
-Unum should not force all inference traffic through one upstream port. Different ports are useful for remote agents because a request to a coding model should fail if that model is not running, rather than silently hitting whatever profile happens to be active.
+Unum should not force all inference traffic through one upstream port. Different ports are useful for remote agents because a request to a coding model should fail if that model is not running, rather than silently hitting another running service.
 
 Unum may still provide stable discovery, display, auth, and optional proxying for known endpoint kinds. The v0 product promise is:
 
 ```text
-Unum serves one active profile at a time.
+Unum serves one running profile at a time.
 That profile may expose one or more explicit endpoints.
 ```
 
-Web UIs such as ComfyUI or OpenWebUI are separate profiles when they should be activated independently. A profile can expose a `webui` endpoint on its own port when one of the profile's services actually serves that endpoint.
-Web UIs such as ComfyUI or OpenWebUI can also be services inside a multi-service profile when they must be activated and stopped together with the model services.
+Web UIs such as ComfyUI or OpenWebUI are separate profiles when they should be started independently. A profile can expose a `webui` endpoint on its own port when one of the profile's services actually serves that endpoint.
+Web UIs such as ComfyUI or OpenWebUI can also be services inside a multi-service profile when they must be started and stopped together with the model services.
 
 ## Rejected alternatives
 

@@ -17,12 +17,11 @@ import (
 )
 
 type Service struct {
-	cfg           config.Config
-	version       string
-	runtime       runtimeBackend
-	mu            sync.Mutex
-	nextOp        int
-	activeProfile string
+	cfg     config.Config
+	version string
+	runtime runtimeBackend
+	mu      sync.Mutex
+	nextOp  int
 	// ponytail: in-memory operation/instance state; persist when daemon restart recovery matters.
 	operations []OperationSummary
 	instances  map[string]InstanceSummary
@@ -47,7 +46,7 @@ type Status struct {
 	RuntimeBackend    string
 	SSHAddress        string
 	InferenceEndpoint string
-	ActiveProfile     string
+	RunningProfile    string
 	Operations        string
 }
 
@@ -129,18 +128,15 @@ func New(cfg config.Config, version string, opts ...Option) *Service {
 
 func (s *Service) Status(context.Context) (Status, error) {
 	s.mu.Lock()
-	activeProfile := s.activeProfile
+	runningProfile := s.runningProfileLocked()
 	s.mu.Unlock()
-	if activeProfile == "" {
-		activeProfile = s.cfg.Inference.ActiveProfile
-	}
 	return Status{
 		ServerName:        s.cfg.ServerName,
 		Version:           s.version,
 		RuntimeBackend:    s.cfg.Runtime.Backend,
 		SSHAddress:        s.cfg.SSHTUI.Address,
 		InferenceEndpoint: inferenceEndpoint(s.cfg.Inference),
-		ActiveProfile:     activeProfile,
+		RunningProfile:    runningProfile,
 		Operations:        s.operationState(),
 	}, nil
 }
@@ -186,24 +182,6 @@ func (s *Service) ValidateProfile(ctx context.Context, id string) (profile.Valid
 	return profile.ValidationResult{}, fmt.Errorf("profile %q not found", id)
 }
 
-func (s *Service) ActivateProfile(ctx context.Context, id string) error {
-	_, validation, err := profile.Find(s.cfg.Storage.Profiles, id, s.profileValidationOptions())
-	if err != nil {
-		return err
-	}
-	if !validation.Valid {
-		reason := "profile invalid"
-		if len(validation.Errors) > 0 {
-			reason = validation.Errors[0]
-		}
-		return fmt.Errorf("profile %q is invalid: %s", id, reason)
-	}
-	s.mu.Lock()
-	s.activeProfile = id
-	s.mu.Unlock()
-	return nil
-}
-
 func (s *Service) StartProfile(ctx context.Context, id string) (OperationSummary, error) {
 	op := s.beginOperation(id, "start")
 	p, validation, err := profile.Find(s.cfg.Storage.Profiles, id, s.profileValidationOptions())
@@ -221,6 +199,13 @@ func (s *Service) StartProfile(ctx context.Context, id string) (OperationSummary
 	_, svc, err := p.SingleService()
 	if err != nil {
 		return s.failOperation(op.ID, "validating", err.Error()), err
+	}
+	if running, ok := s.runningInstance(); ok {
+		err := fmt.Errorf("profile %q is already running", running.ProfileID)
+		if running.ProfileID != id {
+			err = fmt.Errorf("profile %q is already running; stop it before starting %q", running.ProfileID, id)
+		}
+		return s.failOperation(op.ID, "checking state", err.Error()), err
 	}
 	s.updateOperation(op.ID, "checking image", "running", svc.Image)
 	if err := s.runtime.EnsureImage(ctx, svc.Image); err != nil {
@@ -270,6 +255,31 @@ func (s *Service) StartProfile(ctx context.Context, id string) (OperationSummary
 
 func (s *Service) profileValidationOptions() profile.ValidationOptions {
 	return profile.ValidationOptions{MaxMemory: s.cfg.Profiles.MaxMemory}
+}
+
+func (s *Service) runningInstance() (InstanceSummary, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, instance := range s.instances {
+		if instance.State == "running" {
+			return instance, true
+		}
+	}
+	return InstanceSummary{}, false
+}
+
+func (s *Service) runningProfileLocked() string {
+	running := ""
+	for _, instance := range s.instances {
+		if instance.State != "running" {
+			continue
+		}
+		if running != "" && running != instance.ProfileID {
+			return "multiple"
+		}
+		running = instance.ProfileID
+	}
+	return running
 }
 
 func (s *Service) StopProfile(ctx context.Context, id string) (OperationSummary, error) {

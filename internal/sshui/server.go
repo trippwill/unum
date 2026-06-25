@@ -137,8 +137,6 @@ func (m dashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.move(1)
 		case "k", "up":
 			m.move(-1)
-		case "a":
-			m = m.activateProfile()
 		case "s":
 			m = m.startProfile()
 		case "x":
@@ -217,19 +215,6 @@ func (m *dashboardModel) move(delta int) {
 	case pageTokens:
 		m.tokenIndex = moveIndex(m.tokenIndex, delta, len(m.tokens))
 	}
-}
-
-func (m dashboardModel) activateProfile() dashboardModel {
-	if m.page != pageProfiles || len(m.profiles) == 0 {
-		return m
-	}
-	id := m.profiles[m.profileIndex].ID
-	if err := m.svc.ActivateProfile(context.Background(), id); err != nil {
-		m.message = err.Error()
-		return m
-	}
-	m.message = "activated " + id
-	return m.refresh()
 }
 
 func (m dashboardModel) startProfile() dashboardModel {
@@ -314,7 +299,7 @@ func (m dashboardModel) viewDashboard() string {
 		"Runtime:    " + m.status.RuntimeBackend,
 		"SSH:        " + m.status.SSHAddress,
 		"Inference:  " + m.status.InferenceEndpoint,
-		"Active:     " + emptyDash(m.status.ActiveProfile),
+		"Running:    " + emptyDash(m.status.RunningProfile),
 		"Operations: " + m.status.Operations,
 	}
 	return strings.Join(rows, "\n")
@@ -322,7 +307,7 @@ func (m dashboardModel) viewDashboard() string {
 
 func (m dashboardModel) viewProfiles() string {
 	if len(m.profiles) == 0 {
-		return "Profiles\n\n(no profiles)\n\ns start  a activate  x stop"
+		return "Profiles\n\n(no profiles)\n\ns start  x stop"
 	}
 	rows := []string{"Profiles", ""}
 	for i, p := range m.profiles {
@@ -336,7 +321,7 @@ func (m dashboardModel) viewProfiles() string {
 		}
 		rows = append(rows, fmt.Sprintf("%s %s  %s  %s  %s", marker, p.ID, valid, p.State, p.Reason))
 	}
-	return strings.Join(rows, "\n") + "\n\nj/k select  s start  a activate  x stop"
+	return strings.Join(rows, "\n") + "\n\nj/k select  s start  x stop"
 }
 
 func (m dashboardModel) viewInstances() string {

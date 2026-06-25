@@ -15,7 +15,6 @@ import (
 )
 
 type Control interface {
-	Status(context.Context) (service.Status, error)
 	ListInstances(context.Context) ([]service.InstanceSummary, error)
 }
 
@@ -104,23 +103,24 @@ func authorized(r *http.Request, validator Validator) bool {
 }
 
 func activeTarget(ctx context.Context, control Control) (*url.URL, error) {
-	status, err := control.Status(ctx)
-	if err != nil {
-		return nil, err
-	}
-	if status.ActiveProfile == "" {
-		return nil, fmt.Errorf("no active profile")
-	}
 	instances, err := control.ListInstances(ctx)
 	if err != nil {
 		return nil, err
 	}
+	var target string
 	for _, instance := range instances {
-		if instance.ProfileID == status.ActiveProfile && instance.State == "running" {
-			return url.Parse(instance.Endpoint)
+		if instance.State != "running" {
+			continue
 		}
+		if target != "" {
+			return nil, fmt.Errorf("multiple profiles are running")
+		}
+		target = instance.Endpoint
 	}
-	return nil, fmt.Errorf("active profile is not running")
+	if target == "" {
+		return nil, fmt.Errorf("no running profile")
+	}
+	return url.Parse(target)
 }
 
 func joinPath(base, suffix string) string {
