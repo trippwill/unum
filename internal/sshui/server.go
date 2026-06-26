@@ -66,8 +66,8 @@ func NewServer(cfg config.Config, svc *service.Service) (*charmssh.Server, error
 			return ok && err == nil
 		}),
 		wish.WithMiddleware(
-			bubbletea.Middleware(func(_ charmssh.Session) (tea.Model, []tea.ProgramOption) {
-				return newDashboardModel(svc), []tea.ProgramOption{tea.WithAltScreen()}
+			bubbletea.Middleware(func(session charmssh.Session) (tea.Model, []tea.ProgramOption) {
+				return newDashboardModelWithContext(session.Context(), svc), []tea.ProgramOption{tea.WithAltScreen()}
 			}),
 			activeterm.Middleware(),
 			logging.Middleware(),
@@ -76,21 +76,28 @@ func NewServer(cfg config.Config, svc *service.Service) (*charmssh.Server, error
 }
 
 type dashboardModel struct {
-	svc           *service.Service
-	page          page
-	status        service.Status
-	profiles      []service.ProfileSummary
-	profileIndex  int
-	instances     []service.InstanceSummary
-	instanceIndex int
-	operations    []service.OperationSummary
-	tokens        []service.InferenceTokenSummary
-	tokenIndex    int
-	logs          []service.LogLine
-	message       string
-	err           error
-	width         int
-	height        int
+	svc            *service.Service
+	page           page
+	status         service.Status
+	profiles       []service.ProfileSummary
+	profileIndex   int
+	instances      []service.InstanceSummary
+	instanceIndex  int
+	operations     []service.OperationSummary
+	tokens         []service.InferenceTokenSummary
+	tokenIndex     int
+	logs           []service.LogLine
+	logInstance    service.InstanceSummary
+	hasLogInstance bool
+	logStream      <-chan service.LogLine
+	cancelLogs     context.CancelFunc
+	sessionCtx     context.Context
+	logOffset      int
+	logFollow      bool
+	message        string
+	err            error
+	width          int
+	height         int
 }
 
 type page int
@@ -104,8 +111,27 @@ const (
 	pageTokens
 )
 
+const maxLogLines = 2000
+
+type logLineMsg struct {
+	line   service.LogLine
+	stream <-chan service.LogLine
+}
+
+type logStreamClosedMsg struct {
+	instanceID string
+	stream     <-chan service.LogLine
+}
+
 func newDashboardModel(svc *service.Service) dashboardModel {
-	return dashboardModel{svc: svc}.refresh()
+	return newDashboardModelWithContext(context.Background(), svc)
+}
+
+func newDashboardModelWithContext(ctx context.Context, svc *service.Service) dashboardModel {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	return dashboardModel{svc: svc, sessionCtx: ctx}.refresh()
 }
 
 func (m dashboardModel) Init() tea.Cmd {
@@ -114,9 +140,24 @@ func (m dashboardModel) Init() tea.Cmd {
 
 func (m dashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
+	case logLineMsg:
+		return m.handleLogLine(msg.line, msg.stream)
+	case logStreamClosedMsg:
+		if !m.isCurrentLogStream(msg.instanceID, msg.stream) {
+			return m, nil
+		}
+		m.logStream = nil
+		m.cancelLogs = nil
+		m.message = "log stream ended for " + instanceLabel(m.logInstance)
+		return m, nil
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
+		if m.logFollow {
+			m.logOffset = maxLogOffset(len(m.logs), m.logBodyHeight())
+		} else {
+			m.clampLogOffset()
+		}
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "1":
@@ -142,10 +183,15 @@ func (m dashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "x":
 			m = m.stopOrRevoke()
 		case "l":
-			m = m.loadLogs()
+			var cmd tea.Cmd
+			m, cmd = m.loadLogs()
+			return m, cmd
+		case "f":
+			m = m.toggleLogFollow()
 		case "c":
 			m = m.createToken()
 		case "q", "ctrl+c":
+			m = m.stopLogStream()
 			return m, tea.Quit
 		}
 	}
@@ -210,11 +256,22 @@ func (m *dashboardModel) move(delta int) {
 	switch m.page {
 	case pageProfiles:
 		m.profileIndex = moveIndex(m.profileIndex, delta, len(m.profiles))
-	case pageInstances, pageLogs:
+	case pageInstances:
 		m.instanceIndex = moveIndex(m.instanceIndex, delta, len(m.instances))
+	case pageLogs:
+		m.scrollLogs(delta)
 	case pageTokens:
 		m.tokenIndex = moveIndex(m.tokenIndex, delta, len(m.tokens))
 	}
+}
+
+func (m *dashboardModel) scrollLogs(delta int) {
+	if delta < 0 && m.logFollow {
+		m.logFollow = false
+		m.message = "paused log follow for " + instanceLabel(m.logInstance)
+	}
+	m.logOffset += delta
+	m.clampLogOffset()
 }
 
 func (m dashboardModel) startProfile() dashboardModel {
@@ -275,20 +332,113 @@ func (m dashboardModel) createToken() dashboardModel {
 	return m.refresh()
 }
 
-func (m dashboardModel) loadLogs() dashboardModel {
-	if len(m.instances) == 0 {
-		m.message = "no instances"
-		return m
+func (m dashboardModel) loadLogs() (dashboardModel, tea.Cmd) {
+	instance, ok := m.logTarget()
+	if !ok {
+		m.message = "no instances; start a profile first"
+		return m, nil
 	}
-	id := m.instances[m.instanceIndex].ID
-	logs, err := m.svc.TailLogs(context.Background(), id, 100)
+	m = m.stopLogStream()
+	ctx, cancel := context.WithCancel(m.logContext())
+	stream, err := m.svc.StreamLogs(ctx, instance.ID, service.LogOptions{Tail: 100, Follow: true})
 	if err != nil {
-		m.message = err.Error()
+		cancel()
+		m.err = fmt.Errorf("logs for %s: %w", instanceLabel(instance), err)
+		return m, nil
+	}
+	m.page = pageLogs
+	m.logs = nil
+	m.logInstance = instance
+	m.hasLogInstance = true
+	m.logStream = stream
+	m.cancelLogs = cancel
+	m.logOffset = 0
+	m.logFollow = true
+	m.err = nil
+	m.message = "streaming logs for " + instanceLabel(instance)
+	return m, waitForLogLine(instance.ID, stream)
+}
+
+func (m dashboardModel) logContext() context.Context {
+	if m.sessionCtx != nil {
+		return m.sessionCtx
+	}
+	return context.Background()
+}
+
+func (m dashboardModel) logTarget() (service.InstanceSummary, bool) {
+	if m.page == pageLogs && m.hasLogInstance {
+		return m.logInstance, true
+	}
+	if len(m.instances) == 0 {
+		return service.InstanceSummary{}, false
+	}
+	return m.instances[m.instanceIndex], true
+}
+
+func (m dashboardModel) stopLogStream() dashboardModel {
+	if m.cancelLogs != nil {
+		m.cancelLogs()
+	}
+	m.cancelLogs = nil
+	m.logStream = nil
+	return m
+}
+
+func waitForLogLine(instanceID string, stream <-chan service.LogLine) tea.Cmd {
+	return func() tea.Msg {
+		line, ok := <-stream
+		if !ok {
+			return logStreamClosedMsg{instanceID: instanceID, stream: stream}
+		}
+		return logLineMsg{line: line, stream: stream}
+	}
+}
+
+func (m dashboardModel) handleLogLine(line service.LogLine, stream <-chan service.LogLine) (dashboardModel, tea.Cmd) {
+	if !m.isCurrentLogStream(line.InstanceID, stream) {
+		return m, nil
+	}
+	if line.Err != nil {
+		m.err = fmt.Errorf("logs for %s: %w", instanceLabel(m.logInstance), line.Err)
+		m = m.stopLogStream()
+		return m, nil
+	}
+	m.logs = append(m.logs, line)
+	if len(m.logs) > maxLogLines {
+		drop := len(m.logs) - maxLogLines
+		m.logs = m.logs[drop:]
+		m.logOffset -= drop
+		if m.logOffset < 0 {
+			m.logOffset = 0
+		}
+	}
+	if m.logFollow {
+		m.logOffset = maxLogOffset(len(m.logs), m.logBodyHeight())
+	} else {
+		m.clampLogOffset()
+	}
+	if m.logStream == nil {
+		return m, nil
+	}
+	return m, waitForLogLine(m.logInstance.ID, m.logStream)
+}
+
+func (m dashboardModel) isCurrentLogStream(instanceID string, stream <-chan service.LogLine) bool {
+	return m.hasLogInstance && instanceID == m.logInstance.ID && stream == m.logStream
+}
+
+func (m dashboardModel) toggleLogFollow() dashboardModel {
+	if m.page != pageLogs || !m.hasLogInstance {
 		return m
 	}
-	m.logs = logs
-	m.page = pageLogs
-	m.message = "loaded logs for " + instanceLabel(m.instances[m.instanceIndex])
+	m.logFollow = !m.logFollow
+	if m.logFollow {
+		m.logOffset = maxLogOffset(len(m.logs), m.logBodyHeight())
+		m.message = "following logs for " + instanceLabel(m.logInstance)
+	} else {
+		m.message = "paused log follow for " + instanceLabel(m.logInstance)
+	}
 	return m
 }
 
@@ -340,18 +490,29 @@ func (m dashboardModel) viewInstances() string {
 }
 
 func (m dashboardModel) viewLogs() string {
+	if !m.hasLogInstance {
+		return "Logs\n\n(no instance selected)\n\nOpen Instances, select an instance, press l."
+	}
+	follow := "paused"
+	if m.logFollow {
+		follow = "following"
+	}
+	rows := []string{
+		"Logs",
+		"",
+		m.clipLine(fmt.Sprintf("%s  profile=%s  id=%s  %s", instanceLabel(m.logInstance), emptyDash(m.logInstance.ProfileID), shortID(m.logInstance.ID), follow)),
+		"",
+	}
 	if len(m.logs) == 0 {
-		return "Logs\n\n(no logs loaded)\n\nSelect an instance, press l."
-	}
-	rows := []string{"Logs", ""}
-	for _, line := range m.logs {
-		if line.Err != nil {
-			rows = append(rows, "error: "+line.Err.Error())
-			continue
+		rows = append(rows, "waiting for logs from "+instanceLabel(m.logInstance))
+	} else {
+		start, end := visibleRange(len(m.logs), m.logBodyHeight(), m.logOffset)
+		rows = append(rows, fmt.Sprintf("lines %d-%d of %d", start+1, end, len(m.logs)))
+		for _, line := range m.logs[start:end] {
+			rows = append(rows, m.clipLine(line.Text))
 		}
-		rows = append(rows, line.Text)
 	}
-	return strings.Join(rows, "\n")
+	return strings.Join(rows, "\n") + "\n\nj/k scroll  f follow/pause  l reload"
 }
 
 func (m dashboardModel) viewOperations() string {
@@ -390,6 +551,69 @@ func emptyDash(value string) string {
 		return "-"
 	}
 	return value
+}
+
+func (m dashboardModel) logBodyHeight() int {
+	if m.height <= 0 {
+		return 10
+	}
+	height := m.height - 16
+	if height < 3 {
+		return 3
+	}
+	return height
+}
+
+func (m *dashboardModel) clampLogOffset() {
+	if m.logOffset < 0 {
+		m.logOffset = 0
+	}
+	maxOffset := maxLogOffset(len(m.logs), m.logBodyHeight())
+	if m.logOffset > maxOffset {
+		m.logOffset = maxOffset
+	}
+}
+
+func maxLogOffset(total, height int) int {
+	if height <= 0 || total <= height {
+		return 0
+	}
+	return total - height
+}
+
+func visibleRange(total, height, offset int) (int, int) {
+	if total == 0 {
+		return 0, 0
+	}
+	if height <= 0 || height > total {
+		height = total
+	}
+	maxOffset := maxLogOffset(total, height)
+	if offset < 0 {
+		offset = 0
+	}
+	if offset > maxOffset {
+		offset = maxOffset
+	}
+	return offset, offset + height
+}
+
+func (m dashboardModel) clipLine(line string) string {
+	if m.width <= 0 {
+		return line
+	}
+	if m.width <= 3 {
+		runes := []rune(line)
+		if len(runes) <= m.width {
+			return line
+		}
+		return string(runes[:m.width])
+	}
+	runes := []rune(line)
+	if len(runes) <= m.width {
+		return line
+	}
+	return string(runes[:m.width-3]) + "..."
 }
 
 func instanceLabel(instance service.InstanceSummary) string {

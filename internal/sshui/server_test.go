@@ -2,6 +2,7 @@ package sshui
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -81,17 +82,151 @@ func TestDashboardShowsContainerNameAndLoadsLogs(t *testing.T) {
 		t.Fatalf("instance display leaked full id:\n%s", view)
 	}
 
-	next, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("l")})
+	next, cmd := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("l")})
 	model = next.(dashboardModel)
+	model, _ = updateWithCmd(t, model, cmd)
 	view = model.View()
-	if !strings.Contains(view, "Logs") || !strings.Contains(view, "llama server listening") || !strings.Contains(view, "loaded logs for unum-qwen") {
+	if !strings.Contains(view, "Logs") || !strings.Contains(view, "unum-qwen  profile=qwen  id=d76cd03fbf61  following") || !strings.Contains(view, "llama server listening") || !strings.Contains(view, "streaming logs for unum-qwen") {
 		t.Fatalf("logs not shown:\n%s", view)
+	}
+	if !runtime.logFollow || runtime.logTail != 100 {
+		t.Fatalf("log options tail=%d follow=%v", runtime.logTail, runtime.logFollow)
+	}
+}
+
+func TestDashboardAppendsLiveLogs(t *testing.T) {
+	cfg := config.Default()
+	cfg.Storage.State = t.TempDir()
+	cfg.Storage.Profiles = t.TempDir()
+	modelPath := t.TempDir()
+	writeProfile(t, filepath.Join(cfg.Storage.Profiles, "qwen.yaml"), "qwen", modelPath)
+	runtime := &fakeRuntime{
+		status: podman.ContainerStatus{ID: "container-1", Name: "unum-qwen", State: "running", Health: "unknown"},
+		logs:   []podman.LogLine{{Text: "first"}, {Text: "second"}},
+	}
+	svc := service.New(cfg, version.Version, service.WithRuntimeBackend(runtime))
+	if _, err := svc.StartProfile(context.Background(), "qwen"); err != nil {
+		t.Fatal(err)
+	}
+	model := newDashboardModel(svc)
+	next, _ := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("3")})
+	model = next.(dashboardModel)
+	next, cmd := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("l")})
+	model = next.(dashboardModel)
+	model, cmd = updateWithCmd(t, model, cmd)
+	if !strings.Contains(model.View(), "first") {
+		t.Fatalf("first log not shown:\n%s", model.View())
+	}
+	model, _ = updateWithCmd(t, model, cmd)
+	if !strings.Contains(model.View(), "second") {
+		t.Fatalf("second log not appended:\n%s", model.View())
+	}
+}
+
+func TestDashboardScrollsLogsAndTogglesFollow(t *testing.T) {
+	cfg := config.Default()
+	cfg.Storage.State = t.TempDir()
+	cfg.Storage.Profiles = t.TempDir()
+	modelPath := t.TempDir()
+	writeProfile(t, filepath.Join(cfg.Storage.Profiles, "qwen.yaml"), "qwen", modelPath)
+	runtime := &fakeRuntime{
+		status: podman.ContainerStatus{ID: "container-1", Name: "unum-qwen", State: "running", Health: "unknown"},
+		logs: []podman.LogLine{
+			{Text: "line 1"}, {Text: "line 2"}, {Text: "line 3"},
+			{Text: "line 4"}, {Text: "line 5"}, {Text: "line 6"},
+		},
+	}
+	svc := service.New(cfg, version.Version, service.WithRuntimeBackend(runtime))
+	if _, err := svc.StartProfile(context.Background(), "qwen"); err != nil {
+		t.Fatal(err)
+	}
+	model := newDashboardModel(svc)
+	next, _ := model.Update(tea.WindowSizeMsg{Width: 120, Height: 20})
+	model = next.(dashboardModel)
+	next, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("3")})
+	model = next.(dashboardModel)
+	next, cmd := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("l")})
+	model = next.(dashboardModel)
+	for range runtime.logs {
+		model, cmd = updateWithCmd(t, model, cmd)
+	}
+	if !strings.Contains(model.View(), "lines 3-6 of 6") {
+		t.Fatalf("logs did not follow bottom:\n%s", model.View())
+	}
+	next, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("k")})
+	model = next.(dashboardModel)
+	if !strings.Contains(model.View(), "lines 2-5 of 6") {
+		t.Fatalf("logs did not scroll up:\n%s", model.View())
+	}
+	if !strings.Contains(model.View(), "paused") {
+		t.Fatalf("logs did not pause follow:\n%s", model.View())
+	}
+	next, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("f")})
+	model = next.(dashboardModel)
+	if !strings.Contains(model.View(), "following") || !strings.Contains(model.View(), "lines 3-6 of 6") {
+		t.Fatalf("logs did not resume follow:\n%s", model.View())
+	}
+}
+
+func TestDashboardShowsLogStreamErrors(t *testing.T) {
+	cfg := config.Default()
+	cfg.Storage.State = t.TempDir()
+	cfg.Storage.Profiles = t.TempDir()
+	modelPath := t.TempDir()
+	writeProfile(t, filepath.Join(cfg.Storage.Profiles, "qwen.yaml"), "qwen", modelPath)
+	runtime := &fakeRuntime{
+		status: podman.ContainerStatus{ID: "container-1", Name: "unum-qwen", State: "running", Health: "unknown"},
+		logs:   []podman.LogLine{{Err: errors.New("podman exploded")}},
+	}
+	svc := service.New(cfg, version.Version, service.WithRuntimeBackend(runtime))
+	if _, err := svc.StartProfile(context.Background(), "qwen"); err != nil {
+		t.Fatal(err)
+	}
+	model := newDashboardModel(svc)
+	next, _ := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("3")})
+	model = next.(dashboardModel)
+	next, cmd := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("l")})
+	model = next.(dashboardModel)
+	model, _ = updateWithCmd(t, model, cmd)
+	if !strings.Contains(model.View(), "logs for unum-qwen: podman exploded") {
+		t.Fatalf("log error not shown:\n%s", model.View())
+	}
+}
+
+func TestDashboardLogStreamUsesSessionContext(t *testing.T) {
+	cfg := config.Default()
+	cfg.Storage.State = t.TempDir()
+	cfg.Storage.Profiles = t.TempDir()
+	modelPath := t.TempDir()
+	writeProfile(t, filepath.Join(cfg.Storage.Profiles, "qwen.yaml"), "qwen", modelPath)
+	runtime := &fakeRuntime{
+		status:        podman.ContainerStatus{ID: "container-1", Name: "unum-qwen", State: "running", Health: "unknown"},
+		waitForCancel: true,
+	}
+	svc := service.New(cfg, version.Version, service.WithRuntimeBackend(runtime))
+	if _, err := svc.StartProfile(context.Background(), "qwen"); err != nil {
+		t.Fatal(err)
+	}
+	sessionCtx, cancelSession := context.WithCancel(context.Background())
+	model := newDashboardModelWithContext(sessionCtx, svc)
+	next, _ := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("3")})
+	model = next.(dashboardModel)
+	next, cmd := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("l")})
+	model = next.(dashboardModel)
+
+	cancelSession()
+	model, _ = updateWithCmd(t, model, cmd)
+	if !strings.Contains(model.View(), "log stream ended for unum-qwen") {
+		t.Fatalf("session cancel did not end log stream:\n%s", model.View())
 	}
 }
 
 type fakeRuntime struct {
-	status podman.ContainerStatus
-	logs   []podman.LogLine
+	status        podman.ContainerStatus
+	logs          []podman.LogLine
+	logTail       int
+	logFollow     bool
+	waitForCancel bool
 }
 
 func (f *fakeRuntime) EnsureImage(context.Context, string) error { return nil }
@@ -110,13 +245,32 @@ func (f *fakeRuntime) Inspect(context.Context, podman.ContainerID) (podman.Conta
 	return f.status, nil
 }
 
-func (f *fakeRuntime) Logs(context.Context, podman.ContainerID, podman.LogOptions) (<-chan podman.LogLine, error) {
+func (f *fakeRuntime) Logs(ctx context.Context, _ podman.ContainerID, opts podman.LogOptions) (<-chan podman.LogLine, error) {
+	f.logTail = opts.Tail
+	f.logFollow = opts.Follow
+	if f.waitForCancel {
+		ch := make(chan podman.LogLine)
+		go func() {
+			<-ctx.Done()
+			close(ch)
+		}()
+		return ch, nil
+	}
 	ch := make(chan podman.LogLine, len(f.logs))
 	for _, line := range f.logs {
 		ch <- line
 	}
 	close(ch)
 	return ch, nil
+}
+
+func updateWithCmd(t *testing.T, model dashboardModel, cmd tea.Cmd) (dashboardModel, tea.Cmd) {
+	t.Helper()
+	if cmd == nil {
+		t.Fatal("expected command")
+	}
+	next, nextCmd := model.Update(cmd())
+	return next.(dashboardModel), nextCmd
 }
 
 func writeProfile(t *testing.T, path, id, model string) {

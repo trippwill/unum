@@ -535,7 +535,7 @@ type ControlService interface {
     RestartProfile(ctx context.Context, id string) (OperationID, error)
     ListInstances(ctx context.Context) ([]InstanceSummary, error)
     TailLogs(ctx context.Context, instanceID string, lines int) ([]LogLine, error)
-    StreamLogs(ctx context.Context, instanceID string) (<-chan LogLine, error)
+    StreamLogs(ctx context.Context, instanceID string, opts LogOptions) (<-chan LogLine, error)
 
     ListOperations(ctx context.Context) ([]OperationSummary, error)
     WatchEvents(ctx context.Context) (<-chan Event, error)

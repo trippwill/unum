@@ -83,6 +83,11 @@ type LogLine struct {
 	Err        error
 }
 
+type LogOptions struct {
+	Tail   int
+	Follow bool
+}
+
 type Event struct {
 	OperationID string
 	Target      string
@@ -319,7 +324,7 @@ func (s *Service) ListInstances(context.Context) ([]InstanceSummary, error) {
 func (s *Service) TailLogs(ctx context.Context, instanceID string, lines int) ([]LogLine, error) {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	stream, err := s.StreamLogs(ctx, instanceID, podman.LogOptions{Tail: lines})
+	stream, err := s.StreamLogs(ctx, instanceID, LogOptions{Tail: lines})
 	if err != nil {
 		return nil, err
 	}
@@ -334,14 +339,14 @@ func (s *Service) TailLogs(ctx context.Context, instanceID string, lines int) ([
 }
 
 // StreamLogs streams until the runtime closes the log stream or ctx is cancelled.
-func (s *Service) StreamLogs(ctx context.Context, instanceID string, opts podman.LogOptions) (<-chan LogLine, error) {
+func (s *Service) StreamLogs(ctx context.Context, instanceID string, opts LogOptions) (<-chan LogLine, error) {
 	if instanceID == "" {
 		return nil, fmt.Errorf("instance id is required")
 	}
 	if _, ok := s.findInstance(instanceID); !ok {
 		return nil, fmt.Errorf("instance %q not found", instanceID)
 	}
-	lines, err := s.runtime.Logs(ctx, podman.ContainerID(instanceID), opts)
+	lines, err := s.runtime.Logs(ctx, podman.ContainerID(instanceID), podman.LogOptions{Tail: opts.Tail, Follow: opts.Follow})
 	if err != nil {
 		return nil, err
 	}

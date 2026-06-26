@@ -229,6 +229,29 @@ func TestTailLogsRejectsUnknownInstance(t *testing.T) {
 	}
 }
 
+func TestStreamLogsPassesFollowOptions(t *testing.T) {
+	dir := t.TempDir()
+	model := t.TempDir()
+	writeServiceProfile(t, filepath.Join(dir, "qwen.yaml"), "qwen", model)
+	cfg := config.Default()
+	cfg.Storage.Profiles = dir
+	runtime := &fakeRuntime{status: podman.ContainerStatus{ID: "container-1", State: "running", Health: "healthy"}}
+	svc := New(cfg, "test-version", WithRuntimeBackend(runtime))
+	if _, err := svc.StartProfile(context.Background(), "qwen"); err != nil {
+		t.Fatal(err)
+	}
+
+	stream, err := svc.StreamLogs(context.Background(), "container-1", LogOptions{Tail: 100, Follow: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for range stream {
+	}
+	if runtime.logTail != 100 || !runtime.logFollow {
+		t.Fatalf("log options tail=%d follow=%v", runtime.logTail, runtime.logFollow)
+	}
+}
+
 func TestStartProfileRejectsInvalidProfile(t *testing.T) {
 	dir := t.TempDir()
 	writeInvalidServiceProfile(t, filepath.Join(dir, "qwen.yaml"))
@@ -410,6 +433,7 @@ type fakeRuntime struct {
 	inspectErr error
 	logs       []podman.LogLine
 	logTail    int
+	logFollow  bool
 }
 
 func (f *fakeRuntime) EnsureImage(_ context.Context, image string) error {
@@ -448,6 +472,7 @@ func (f *fakeRuntime) Inspect(_ context.Context, id podman.ContainerID) (podman.
 func (f *fakeRuntime) Logs(_ context.Context, id podman.ContainerID, opts podman.LogOptions) (<-chan podman.LogLine, error) {
 	f.calls = append(f.calls, "logs:"+string(id))
 	f.logTail = opts.Tail
+	f.logFollow = opts.Follow
 	ch := make(chan podman.LogLine, len(f.logs))
 	for _, line := range f.logs {
 		ch <- line
