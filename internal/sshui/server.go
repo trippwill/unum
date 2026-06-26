@@ -84,6 +84,7 @@ type dashboardModel struct {
 	instances      []service.InstanceSummary
 	instanceIndex  int
 	operations     []service.OperationSummary
+	operationIndex int
 	tokens         []service.InferenceTokenSummary
 	tokenIndex     int
 	logs           []service.LogLine
@@ -248,6 +249,7 @@ func (m dashboardModel) refresh() dashboardModel {
 	}
 	m.profileIndex = clamp(m.profileIndex, len(m.profiles))
 	m.instanceIndex = clamp(m.instanceIndex, len(m.instances))
+	m.operationIndex = clamp(m.operationIndex, len(m.operations))
 	m.tokenIndex = clamp(m.tokenIndex, len(m.tokens))
 	return m
 }
@@ -260,6 +262,8 @@ func (m *dashboardModel) move(delta int) {
 		m.instanceIndex = moveIndex(m.instanceIndex, delta, len(m.instances))
 	case pageLogs:
 		m.scrollLogs(delta)
+	case pageOperations:
+		m.operationIndex = moveIndex(m.operationIndex, delta, len(m.operations))
 	case pageTokens:
 		m.tokenIndex = moveIndex(m.tokenIndex, delta, len(m.tokens))
 	}
@@ -281,8 +285,7 @@ func (m dashboardModel) startProfile() dashboardModel {
 	id := m.profiles[m.profileIndex].ID
 	op, err := m.svc.StartProfile(context.Background(), id)
 	if err != nil {
-		m.message = op.State + " " + op.Phase + ": " + err.Error()
-		return m.refresh()
+		return m.showOperationError(op)
 	}
 	m.message = op.State + " " + op.Phase
 	return m.refresh()
@@ -297,8 +300,7 @@ func (m dashboardModel) stopOrRevoke() dashboardModel {
 		id := m.profiles[m.profileIndex].ID
 		op, err := m.svc.StopProfile(context.Background(), id)
 		if err != nil {
-			m.message = op.State + " " + op.Phase + ": " + err.Error()
-			return m.refresh()
+			return m.showOperationError(op)
 		}
 		m.message = op.State + " " + op.Phase
 		return m.refresh()
@@ -315,6 +317,24 @@ func (m dashboardModel) stopOrRevoke() dashboardModel {
 		return m.refresh()
 	default:
 		return m
+	}
+}
+
+func (m dashboardModel) showOperationError(op service.OperationSummary) dashboardModel {
+	m = m.refresh()
+	m.page = pageOperations
+	m.selectOperation(op.ID)
+	m.message = op.State + " " + op.Phase + "; see operation detail"
+	return m
+}
+
+func (m *dashboardModel) selectOperation(id string) {
+	m.operationIndex = clamp(m.operationIndex, len(m.operations))
+	for i, op := range m.operations {
+		if op.ID == id {
+			m.operationIndex = i
+			return
+		}
 	}
 }
 
@@ -519,11 +539,27 @@ func (m dashboardModel) viewOperations() string {
 	if len(m.operations) == 0 {
 		return "Operations\n\n(no operations)"
 	}
-	rows := []string{"Operations", ""}
-	for _, op := range m.operations {
-		rows = append(rows, fmt.Sprintf("%s  %s  %s  %s  %s", op.ID, op.Target, op.State, op.Phase, op.Message))
+	index := clamp(m.operationIndex, len(m.operations))
+	op := m.operations[index]
+	rows := []string{"Operation Detail", "----------------"}
+	for _, line := range []string{
+		"ID: " + op.ID,
+		"Target: " + op.Target,
+		"State: " + op.State,
+		"Phase: " + op.Phase,
+		"Message: " + emptyDash(op.Message),
+	} {
+		rows = append(rows, m.wrapLine(line)...)
 	}
-	return strings.Join(rows, "\n")
+	rows = append(rows, "", "Operations", "")
+	for i, op := range m.operations {
+		marker := " "
+		if i == index {
+			marker = ">"
+		}
+		rows = append(rows, m.clipLine(fmt.Sprintf("%s %s  %s  %s  %s", marker, op.ID, op.Target, op.State, op.Phase)))
+	}
+	return strings.Join(rows, "\n") + "\n\nj/k select"
 }
 
 func (m dashboardModel) viewTokens() string {
@@ -614,6 +650,25 @@ func (m dashboardModel) clipLine(line string) string {
 		return line
 	}
 	return string(runes[:m.width-3]) + "..."
+}
+
+func (m dashboardModel) wrapLine(line string) []string {
+	if m.width <= 0 {
+		return []string{line}
+	}
+	runes := []rune(line)
+	if len(runes) <= m.width {
+		return []string{line}
+	}
+	var lines []string
+	for len(runes) > m.width {
+		lines = append(lines, string(runes[:m.width]))
+		runes = runes[m.width:]
+	}
+	if len(runes) > 0 {
+		lines = append(lines, string(runes))
+	}
+	return lines
 }
 
 func instanceLabel(instance service.InstanceSummary) string {

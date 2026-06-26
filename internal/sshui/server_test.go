@@ -51,6 +51,59 @@ func TestDashboardCanSwitchToTokensAndCreateToken(t *testing.T) {
 	}
 }
 
+func TestDashboardShowsSelectedOperationDetail(t *testing.T) {
+	cfg := config.Default()
+	cfg.Storage.State = t.TempDir()
+	cfg.Storage.Profiles = t.TempDir()
+	modelPath := t.TempDir()
+	writeProfile(t, filepath.Join(cfg.Storage.Profiles, "qwen.yaml"), "qwen", modelPath)
+	runtime := &fakeRuntime{status: podman.ContainerStatus{ID: "container-1", Name: "unum-qwen", State: "running", Health: "unknown"}}
+	svc := service.New(cfg, version.Version, service.WithRuntimeBackend(runtime))
+	if _, err := svc.StartProfile(context.Background(), "qwen"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.StopProfile(context.Background(), "qwen"); err != nil {
+		t.Fatal(err)
+	}
+	model := newDashboardModel(svc)
+	next, _ := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("5")})
+	model = next.(dashboardModel)
+	next, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("j")})
+	model = next.(dashboardModel)
+	view := model.View()
+	for _, want := range []string{"> op_2", "Detail", "ID: op_2", "Target: qwen", "State: succeeded", "Phase: stopped", "Message: container-1"} {
+		if !strings.Contains(view, want) {
+			t.Fatalf("operation detail missing %q:\n%s", want, view)
+		}
+	}
+}
+
+func TestDashboardStartFailureSelectsOperationDetail(t *testing.T) {
+	cfg := config.Default()
+	cfg.Storage.State = t.TempDir()
+	cfg.Storage.Profiles = t.TempDir()
+	modelPath := t.TempDir()
+	writeProfile(t, filepath.Join(cfg.Storage.Profiles, "qwen.yaml"), "qwen", modelPath)
+	longErr := "podman create --name unum-qwen --label unum.managed=true --label unum.profile=qwen failed: container name already in use; remove the stopped managed container or choose another profile"
+	runtime := &fakeRuntime{
+		status:   podman.ContainerStatus{ID: "container-1", Name: "unum-qwen", State: "running", Health: "unknown"},
+		startErr: errors.New(longErr),
+	}
+	model := newDashboardModel(service.New(cfg, version.Version, service.WithRuntimeBackend(runtime)))
+	next, _ := model.Update(tea.WindowSizeMsg{Width: 60, Height: 24})
+	model = next.(dashboardModel)
+	next, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("2")})
+	model = next.(dashboardModel)
+	next, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("s")})
+	model = next.(dashboardModel)
+	view := model.View()
+	for _, want := range []string{"Operations", "> op_1", "Detail", "State: failed", "Phase: starting container", "Message: " + longErr[:51], longErr[51:111], "see operation detail"} {
+		if !strings.Contains(view, want) {
+			t.Fatalf("failed operation detail missing %q:\n%s", want, view)
+		}
+	}
+}
+
 func TestDashboardShowsContainerNameAndLoadsLogs(t *testing.T) {
 	cfg := config.Default()
 	cfg.Storage.State = t.TempDir()
@@ -227,6 +280,7 @@ type fakeRuntime struct {
 	logTail       int
 	logFollow     bool
 	waitForCancel bool
+	startErr      error
 }
 
 func (f *fakeRuntime) EnsureImage(context.Context, string) error { return nil }
@@ -235,7 +289,7 @@ func (f *fakeRuntime) Create(context.Context, profile.Profile) (podman.Container
 	return f.status.ID, nil
 }
 
-func (f *fakeRuntime) Start(context.Context, podman.ContainerID) error { return nil }
+func (f *fakeRuntime) Start(context.Context, podman.ContainerID) error { return f.startErr }
 
 func (f *fakeRuntime) Stop(context.Context, podman.ContainerID) error { return nil }
 
