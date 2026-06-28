@@ -52,6 +52,8 @@ Use precise names:
 - The product exists as planned releases, not internal engineering milestones.
 - **`v0`** alone means only the pre-1.0 compatibility era. Do not use it as a roadmap bucket.
 
+Core is complete. Use it as the proof baseline; plan new work against the `v0.1.0` release experience.
+
 ---
 
 ## Target user
@@ -89,6 +91,16 @@ This is initially for the `unum` server, but should be shaped so it can later be
 - Keep profile model independent of Podman.
 - Keep inference API compatible with OpenAI-style clients.
 - Make container runtime support an implementation detail.
+
+### Post-Core planning posture
+
+Core proved the thin end-to-end loop. `v0.1.0` planning should now optimize for a nice, consistent, helpful operator experience:
+
+- reduce setup, profile, token, and troubleshooting toil;
+- make TUI, CLI, logs, validation, and inference errors say what the operator can do next;
+- plan features as coherent flows, not isolated minimum proof slices;
+- implement those flows in small, buildable slices;
+- get the flow clear before building, then implement the smallest code that delivers it.
 
 ---
 
@@ -677,7 +689,9 @@ For `v0.1.0`, the TUI can be the main control surface.
 
 ---
 
-## Core engineering proof plan
+## Completed Core engineering proof plan
+
+This proof plan is retained as the Core completion record. New work belongs in `v0.1.0` release planning.
 
 ### Milestone 1: daemon skeleton
 
@@ -785,6 +799,8 @@ Done when a user can create a token in the TUI and paste it into an editor.
 ## `v0.1.0` release intent
 
 `v0.1.0` should be the first tagged release that is useful to a technical user outside the current dogfood setup.
+
+Post-Core, "useful" means more than the loop working once: routine setup, profile operation, token use, logs, validation, and failure recovery should feel consistent and should reduce operator toil.
 
 Include:
 

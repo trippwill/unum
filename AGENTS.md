@@ -52,7 +52,8 @@ Default rootful paths are `/etc/unum/unumd.toml` and `/var/lib/unum`.
 - Ledger raw product-owner feedback, but still make recommendations, clarify tradeoffs, and push back during planning.
 - Before closing a planning thread, promote durable product-owner feedback from session state into `product/feedback.md`, issues, ADRs, or a plan.
 - Prefer clean architecture at boundaries, Ponytail/YAGNI inside boundaries.
-- Prioritize: security/data loss, release blockers, promised release behavior, simplification, docs/onboarding, future work.
+- Plan release work around a coherent, helpful operator experience that reduces toil; get the UX flow clear before building, then implement it minimally.
+- Prioritize: security/data loss, release blockers, promised release behavior, UX/toil reduction, simplification, docs/onboarding, future work.
 - Keep work in buildable Conventional Commit slices.
 - Get rubber-duck review before commits and security review for security-sensitive changes.
 - For long-running review agents, report that the agent is still running, then read results on completion notification instead of re-running the same review.
