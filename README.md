@@ -46,6 +46,8 @@ See [`docs/operations.md`](docs/operations.md) for rootful Fedora+Podman install
 systemd setup, config/profile examples, SSH access, and inference token smoke
 checks.
 
-## Product brief
+## Product vision
 
-See [`product/unum-v0-product-brief.md`](product/unum-v0-product-brief.md).
+See [`product/vision.md`](product/vision.md). The original release framing in
+[`product/unum-v0-product-brief.md`](product/unum-v0-product-brief.md) is
+retained as a historical document.

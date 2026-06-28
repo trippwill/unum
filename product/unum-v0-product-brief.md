@@ -1,5 +1,7 @@
 # Unum Product Brief
 
+> **Historical document.** The canonical product direction now lives in [`vision.md`](vision.md). This brief is retained as the original framing for Core and `v0.1.0` and is not maintained as the source of truth.
+
 ## Product
 
 **Unum** is a trusted-server local inference manager.

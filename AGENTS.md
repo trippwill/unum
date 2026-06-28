@@ -53,6 +53,7 @@ Default rootful paths are `/etc/unum/unumd.toml` and `/var/lib/unum`.
 - Before closing a planning thread, promote durable product-owner feedback from session state into `product/feedback.md`, issues, ADRs, or a plan.
 - Prefer clean architecture at boundaries, Ponytail/YAGNI inside boundaries.
 - Plan release work around a coherent, helpful operator experience that reduces toil; get the UX flow clear before building, then implement it minimally.
+- Product/release planning work should map back to one of the four pillars in [`product/vision.md`](product/vision.md): site layout, server inventory + validation, serving recipes, or the SSH TUI experience. Cross-cutting work (security, packaging, CI, bug fixes) is exempt.
 - Prioritize: security/data loss, release blockers, promised release behavior, UX/toil reduction, simplification, docs/onboarding, future work.
 - Keep work in buildable Conventional Commit slices.
 - Get rubber-duck review before commits and security review for security-sensitive changes.
