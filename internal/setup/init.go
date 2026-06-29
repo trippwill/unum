@@ -6,6 +6,7 @@ import (
 	"crypto/rand"
 	_ "embed"
 	"encoding/pem"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -25,27 +26,23 @@ type InitOptions struct {
 	ServerName string
 	StateDir   string
 	Profiles   string
+	Models     string
+	Cache      string
+	Overwrite  bool
 }
 
 func Init(opts InitOptions) error {
-	cfg := config.Default()
-	if opts.ConfigPath == "" {
-		opts.ConfigPath = config.DefaultPath
-	}
-	if opts.ServerName != "" {
-		cfg.ServerName = opts.ServerName
-	}
-	if opts.StateDir != "" {
-		cfg.Storage.State = opts.StateDir
-		cfg.Storage.Profiles = filepath.Join(opts.StateDir, "profiles")
-		cfg.SSHTUI.HostKey = filepath.Join(opts.StateDir, "ssh", "host_ed25519")
-	}
-	if opts.Profiles != "" {
-		cfg.Storage.Profiles = opts.Profiles
-	}
-	modelsDir := filepath.Join(cfg.Storage.State, "models")
+	cfg, configPath := effectiveConfig(opts)
 
-	if err := mkdirAll(filepath.Dir(opts.ConfigPath), 0o755); err != nil {
+	if !opts.Overwrite {
+		if _, err := os.Stat(configPath); err == nil {
+			return fmt.Errorf("config %s already exists; pass --overwrite to replace it", configPath)
+		} else if !os.IsNotExist(err) {
+			return fmt.Errorf("stat %s: %w", configPath, err)
+		}
+	}
+
+	if err := mkdirAll(filepath.Dir(configPath), 0o755); err != nil {
 		return err
 	}
 	for _, dir := range []struct {
@@ -54,7 +51,8 @@ func Init(opts InitOptions) error {
 	}{
 		{cfg.Storage.State, 0o750},
 		{cfg.Storage.Profiles, 0o750},
-		{modelsDir, 0o750},
+		{cfg.Storage.Models, 0o750},
+		{cfg.Storage.Cache, 0o750},
 		{filepath.Join(cfg.Storage.State, "ssh"), 0o700},
 		{filepath.Join(cfg.Storage.State, "tokens"), 0o700},
 		{filepath.Join(cfg.Storage.State, "logs"), 0o750},
@@ -64,16 +62,45 @@ func Init(opts InitOptions) error {
 		}
 	}
 
-	if err := writeConfigIfMissing(opts.ConfigPath, cfg); err != nil {
+	if err := writeConfig(configPath, cfg, opts.Overwrite); err != nil {
 		return err
 	}
 	if err := writeHostKeyIfMissing(cfg.SSHTUI.HostKey); err != nil {
 		return err
 	}
-	if err := writeProfileIfMissing(filepath.Join(cfg.Storage.Profiles, "qwen3-small-cpu.yaml"), modelsDir); err != nil {
+	if err := writeProfileIfMissing(filepath.Join(cfg.Storage.Profiles, "qwen3-small-cpu.yaml"), cfg.Storage.Models); err != nil {
 		return err
 	}
 	return nil
+}
+
+// effectiveConfig applies opts on top of config.Default() without touching the
+// filesystem. Each StorageConfig role is set independently from the matching
+// opts field; no role cascades from another. Returns the resolved config and
+// the resolved config file path.
+func effectiveConfig(opts InitOptions) (config.Config, string) {
+	cfg := config.Default()
+	configPath := opts.ConfigPath
+	if configPath == "" {
+		configPath = config.DefaultPath
+	}
+	if opts.ServerName != "" {
+		cfg.ServerName = opts.ServerName
+	}
+	if opts.StateDir != "" {
+		cfg.Storage.State = opts.StateDir
+	}
+	if opts.Profiles != "" {
+		cfg.Storage.Profiles = opts.Profiles
+	}
+	if opts.Models != "" {
+		cfg.Storage.Models = opts.Models
+	}
+	if opts.Cache != "" {
+		cfg.Storage.Cache = opts.Cache
+	}
+	cfg.SSHTUI.HostKey = filepath.Join(cfg.Storage.State, "ssh", "host_ed25519")
+	return cfg, configPath
 }
 
 func mkdirAll(path string, perm os.FileMode) error {
@@ -83,12 +110,30 @@ func mkdirAll(path string, perm os.FileMode) error {
 	return nil
 }
 
-func writeConfigIfMissing(path string, cfg config.Config) error {
+func writeConfig(path string, cfg config.Config, overwrite bool) error {
 	data, err := config.Marshal(cfg)
 	if err != nil {
 		return err
 	}
-	return writeFileIfMissing(path, append(data, '\n'), 0o644)
+	payload := append(data, '\n')
+	if overwrite {
+		if err := os.WriteFile(path, payload, 0o644); err != nil {
+			return fmt.Errorf("write %s: %w", path, err)
+		}
+		return nil
+	}
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o644)
+	if err != nil {
+		if errors.Is(err, os.ErrExist) {
+			return fmt.Errorf("config %s already exists; pass --overwrite to replace it", path)
+		}
+		return fmt.Errorf("write %s: %w", path, err)
+	}
+	defer f.Close()
+	if _, err := f.Write(payload); err != nil {
+		return fmt.Errorf("write %s: %w", path, err)
+	}
+	return nil
 }
 
 func writeHostKeyIfMissing(path string) error {

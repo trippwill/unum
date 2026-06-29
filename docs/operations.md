@@ -18,14 +18,52 @@ mise run dev-update -- feat/compose-profile-yaml
 ```
 
 The helper refuses a dirty worktree, fetches and fast-forwards the branch, runs
-the CI-equivalent gate, installs `unumd` and the systemd unit, runs idempotent
-init, enables the unit, and restarts `unumd`.
+the CI-equivalent gate, installs `unumd` and the systemd unit, runs `unumd init`
+only when the config file is absent, enables the unit, and restarts `unumd`. To
+re-initialize an existing config, run `sudo unumd init --overwrite` manually.
 
 Initialize root-owned config and state:
 
 ```bash
 sudo unumd init --config /etc/unum/unumd.toml --state /var/lib/unum --server-name unum
 ```
+
+`unumd init` refuses to overwrite an existing config file. Pass `--overwrite` to
+replace it; existing SSH host keys and starter profile files are always
+preserved.
+
+### Storage layout
+
+`[storage]` defines four independent paths. Defaults are flat under
+`/var/lib/unum`; each role can be placed on its own disk via the matching init
+flag.
+
+| Role | Default | Flag | Purpose |
+| --- | --- | --- | --- |
+| `state` | `/var/lib/unum` | `--state` | Unum-owned bookkeeping (registries, host keys, tokens, logs) |
+| `profiles` | `/var/lib/unum/profiles` | `--profiles` | Runnable profile YAML |
+| `models` | `/var/lib/unum/models` | `--models` | Host root for model repositories and files |
+| `cache` | `/var/lib/unum/cache` | `--cache` | Serving-stack scratch (Hugging Face cache, compile cache, etc.) |
+
+Each flag overrides exactly its own role. For a server with model storage on a
+fast SSD and profiles on a ZFS pool, place each role explicitly:
+
+```bash
+sudo unumd init \
+  --config /etc/unum/unumd.toml \
+  --state /var/lib/unum \
+  --models /fast/ai/models \
+  --profiles /tank/ai/unum/profiles \
+  --cache /fast/ai/unum/cache \
+  --server-name unum \
+  --overwrite
+```
+
+The SSH host key lives under `state` at `${state}/ssh/host_ed25519` by
+convention; it is not a configurable storage role.
+
+The `cache` role is created on init but is not yet consumed by any built-in
+serving stack. It will be wired in when serving recipes land.
 
 Import the admin user's existing authorized SSH keys:
 

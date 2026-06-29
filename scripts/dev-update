@@ -40,7 +40,9 @@ mise run ci
 
 sudo install -Dm755 bin/unumd /usr/local/bin/unumd
 sudo install -Dm644 packaging/systemd/unumd.service /etc/systemd/system/unumd.service
-sudo /usr/local/bin/unumd init --config "$config" --state "$state" --server-name "$server_name"
+if sudo test ! -e "$config"; then
+  sudo /usr/local/bin/unumd init --config "$config" --state "$state" --server-name "$server_name"
+fi
 sudo systemctl daemon-reload
 sudo systemctl enable unumd
 sudo systemctl restart unumd

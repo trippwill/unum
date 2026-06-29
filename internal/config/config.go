@@ -42,6 +42,8 @@ type RuntimeConfig struct {
 type StorageConfig struct {
 	State    string `toml:"state"`
 	Profiles string `toml:"profiles"`
+	Models   string `toml:"models"`
+	Cache    string `toml:"cache"`
 }
 
 type ProfilesConfig struct {
@@ -72,6 +74,8 @@ func Default() Config {
 		Storage: StorageConfig{
 			State:    "/var/lib/unum",
 			Profiles: "/var/lib/unum/profiles",
+			Models:   "/var/lib/unum/models",
+			Cache:    "/var/lib/unum/cache",
 		},
 		Profiles: ProfilesConfig{
 			MaxMemory: "32g",

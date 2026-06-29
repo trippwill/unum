@@ -19,6 +19,8 @@ backend = "podman"
 [storage]
 state = "/var/lib/unum"
 profiles = "/var/lib/unum/profiles"
+models = "/var/lib/unum/models"
+cache = "/var/lib/unum/cache"
 
 [profiles]
 max_memory = "32g"

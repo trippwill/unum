@@ -65,6 +65,9 @@ func runInit(args []string) error {
 	fs.StringVar(&opts.ServerName, "server-name", "", "server name")
 	fs.StringVar(&opts.StateDir, "state", "", "state directory")
 	fs.StringVar(&opts.Profiles, "profiles", "", "profile directory")
+	fs.StringVar(&opts.Models, "models", "", "model directory")
+	fs.StringVar(&opts.Cache, "cache", "", "cache directory")
+	fs.BoolVar(&opts.Overwrite, "overwrite", false, "overwrite existing config file")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -450,7 +453,7 @@ func usage() {
 	fmt.Println(`unumd controls the unum trusted-server inference manager.
 
 Usage:
-  unumd init [--config PATH] [--state PATH] [--server-name NAME]
+  unumd init [--config PATH] [--state PATH] [--profiles PATH] [--models PATH] [--cache PATH] [--server-name NAME] [--overwrite]
   unumd profiles list [--config PATH]
   unumd profiles validate [--config PATH] ID
   unumd status [--config PATH]
