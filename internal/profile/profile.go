@@ -36,6 +36,7 @@ type Service struct {
 	SecurityOpt   []string          `yaml:"security_opt"`
 	Entrypoint    string            `yaml:"entrypoint"`
 	Command       StringList        `yaml:"command"`
+	Cpus          string            `yaml:"cpus"`
 }
 
 type UnumMetadata struct {
@@ -70,7 +71,10 @@ type Summary struct {
 }
 
 type ValidationOptions struct {
-	MaxMemory string
+	MemoryMax  string
+	MemswapMax string
+	CPUsMax    string
+	Devices    []string
 }
 
 type ValidationResult struct {
@@ -149,7 +153,11 @@ func Find(dir, id string, opts ValidationOptions) (Profile, ValidationResult, er
 
 func Validate(p Profile, opts ValidationOptions) ValidationResult {
 	var errs []string
-	maxMemory, maxMemoryLabel, hasMaxMemory := opts.maxMemory(&errs)
+	memMax, memMaxLabel, hasMemMax := opts.parseMemoryCeiling("memory_max", opts.MemoryMax, &errs)
+	swapMax, swapMaxLabel, hasSwapMax := opts.parseMemoryCeiling("memswap_max", opts.MemswapMax, &errs)
+	cpuMax, cpuMaxLabel, hasCPUMax := opts.parseCPUCeiling(&errs)
+	devices := deviceSet(opts.Devices)
+
 	if strings.TrimSpace(p.Unum.ID) == "" {
 		errs = append(errs, "x-unum.id is required")
 	}
@@ -169,15 +177,23 @@ func Validate(p Profile, opts ValidationOptions) ValidationResult {
 		if strings.TrimSpace(svc.Image) == "" {
 			errs = append(errs, "services."+name+".image is required")
 		}
-		validateMemory := memoryValidator(&errs, maxMemory, maxMemoryLabel, hasMaxMemory)
-		memory, hasMemory := validateMemory("services."+name+".mem_limit", svc.MemLimit, true)
-		swap, hasSwap := validateMemory("services."+name+".memswap_limit", svc.MemswapLimit, false)
+		memField := "services." + name + ".mem_limit"
+		swapField := "services." + name + ".memswap_limit"
+		cpusField := "services." + name + ".cpus"
+		memory, hasMemory := parseServiceMemory(memField, svc.MemLimit, memMax, memMaxLabel, hasMemMax, &errs)
+		swap, hasSwap := parseServiceMemory(swapField, svc.MemswapLimit, swapMax, swapMaxLabel, hasSwapMax, &errs)
 		if hasMemory && hasSwap && swap < memory {
-			errs = append(errs, "services."+name+".memswap_limit cannot be less than services."+name+".mem_limit")
+			errs = append(errs, swapField+" cannot be less than "+memField)
 		}
+		parseServiceCPUs(cpusField, svc.Cpus, cpuMax, cpuMaxLabel, hasCPUMax, &errs)
 		for _, volume := range svc.Volumes {
 			for _, err := range validateVolume(volume) {
 				errs = append(errs, "services."+name+".volumes: "+err)
+			}
+			if host := volumeHost(volume); host != "" && strings.HasPrefix(host, "/dev/") {
+				if _, ok := devices[host]; !ok {
+					errs = append(errs, "services."+name+".volumes: device path "+host+" is not in [inventory].devices")
+				}
 			}
 		}
 		if svc.OOMScoreAdj != nil && (*svc.OOMScoreAdj < -1000 || *svc.OOMScoreAdj > 1000) {
@@ -191,6 +207,10 @@ func Validate(p Profile, opts ValidationOptions) ValidationResult {
 			}
 			if !filepath.IsAbs(host) {
 				errs = append(errs, "services."+name+".devices host must be absolute: "+device)
+				continue
+			}
+			if _, ok := devices[host]; !ok {
+				errs = append(errs, "services."+name+".devices: "+host+" is not in [inventory].devices")
 			}
 		}
 	}
@@ -219,17 +239,92 @@ func Validate(p Profile, opts ValidationOptions) ValidationResult {
 	return ValidationResult{Valid: len(errs) == 0, Errors: errs}
 }
 
-func (opts ValidationOptions) maxMemory(errs *[]string) (int64, string, bool) {
-	label := strings.TrimSpace(opts.MaxMemory)
+func (opts ValidationOptions) parseMemoryCeiling(name, value string, errs *[]string) (int64, string, bool) {
+	label := strings.TrimSpace(value)
 	if label == "" {
 		return 0, "", false
 	}
 	parsed, err := parseMemory(label)
 	if err != nil {
-		*errs = append(*errs, "profile validation max_memory: "+err.Error())
+		*errs = append(*errs, "profile validation "+name+": "+err.Error())
 		return 0, "", false
 	}
 	return parsed, label, true
+}
+
+func (opts ValidationOptions) parseCPUCeiling(errs *[]string) (float64, string, bool) {
+	label := strings.TrimSpace(opts.CPUsMax)
+	if label == "" {
+		return 0, "", false
+	}
+	parsed, err := parseCPUs(label)
+	if err != nil {
+		*errs = append(*errs, "profile validation cpus_max: "+err.Error())
+		return 0, "", false
+	}
+	if parsed == 0 {
+		return 0, "", false
+	}
+	return parsed, label, true
+}
+
+func parseServiceMemory(field, value string, ceiling int64, ceilingLabel string, hasCeiling bool, errs *[]string) (int64, bool) {
+	if strings.TrimSpace(value) == "" {
+		return 0, false
+	}
+	parsed, err := parseMemory(value)
+	if err != nil {
+		*errs = append(*errs, field+": "+err.Error())
+		return 0, false
+	}
+	if hasCeiling && parsed > ceiling {
+		*errs = append(*errs, field+" exceeds configured "+ceilingFieldFor(field)+" "+ceilingLabel)
+	}
+	return parsed, true
+}
+
+func parseServiceCPUs(field, value string, ceiling float64, ceilingLabel string, hasCeiling bool, errs *[]string) {
+	if strings.TrimSpace(value) == "" {
+		return
+	}
+	parsed, err := parseCPUs(value)
+	if err != nil {
+		*errs = append(*errs, field+": "+err.Error())
+		return
+	}
+	if parsed == 0 {
+		*errs = append(*errs, field+" must be greater than 0")
+		return
+	}
+	if hasCeiling && parsed > ceiling {
+		*errs = append(*errs, field+" exceeds configured cpus_max "+ceilingLabel)
+	}
+}
+
+func ceilingFieldFor(field string) string {
+	if strings.HasSuffix(field, ".memswap_limit") {
+		return "memswap_max"
+	}
+	return "memory_max"
+}
+
+func deviceSet(devices []string) map[string]struct{} {
+	set := make(map[string]struct{}, len(devices))
+	for _, d := range devices {
+		set[d] = struct{}{}
+	}
+	return set
+}
+
+func volumeHost(v Volume) string {
+	if v.Short != "" {
+		host, _, _, err := ParseVolume(v.Short)
+		if err != nil {
+			return ""
+		}
+		return host
+	}
+	return v.Source
 }
 
 func (p Profile) SingleService() (string, Service, error) {
@@ -379,23 +474,6 @@ func (s *StringList) UnmarshalYAML(value *yaml.Node) error {
 	}
 }
 
-func memoryValidator(errs *[]string, maxMemory int64, maxMemoryLabel string, hasMaxMemory bool) func(string, string, bool) (int64, bool) {
-	return func(field, value string, enforceMax bool) (int64, bool) {
-		if strings.TrimSpace(value) == "" {
-			return 0, false
-		}
-		parsed, err := parseMemory(value)
-		if err != nil {
-			*errs = append(*errs, field+": "+err.Error())
-			return 0, false
-		}
-		if enforceMax && hasMaxMemory && parsed > maxMemory {
-			*errs = append(*errs, field+" exceeds configured max_memory "+maxMemoryLabel)
-		}
-		return parsed, true
-	}
-}
-
 func sortedKeys[V any](m map[string]V) []string {
 	keys := make([]string, 0, len(m))
 	for key := range m {
@@ -441,4 +519,19 @@ func parseMemory(value string) (int64, error) {
 		return 0, fmt.Errorf("memory value %q is too large", value)
 	}
 	return n * multiplier, nil
+}
+
+func parseCPUs(value string) (float64, error) {
+	v := strings.TrimSpace(value)
+	if v == "" {
+		return 0, fmt.Errorf("cpus value is empty")
+	}
+	n, err := strconv.ParseFloat(v, 64)
+	if err != nil {
+		return 0, fmt.Errorf("invalid cpus value %q", value)
+	}
+	if n < 0 || math.IsNaN(n) || math.IsInf(n, 0) {
+		return 0, fmt.Errorf("invalid cpus value %q", value)
+	}
+	return n, nil
 }

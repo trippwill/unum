@@ -206,6 +206,9 @@ func createArgs(p profile.Profile, svc profile.Service) []string {
 	if svc.MemswapLimit != "" {
 		args = append(args, "--memory-swap", svc.MemswapLimit)
 	}
+	if strings.TrimSpace(svc.Cpus) != "" {
+		args = append(args, "--cpus", strings.TrimSpace(svc.Cpus))
+	}
 	if svc.ShmSize != "" {
 		args = append(args, "--shm-size", svc.ShmSize)
 	}

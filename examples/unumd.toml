@@ -22,8 +22,11 @@ profiles = "/var/lib/unum/profiles"
 models = "/var/lib/unum/models"
 cache = "/var/lib/unum/cache"
 
-[profiles]
-max_memory = "32g"
+[inventory]
+memory_max = "32g"
+memswap_max = "32g"
+cpus_max = "0"
+devices = []
 
 [logs]
 retain_days = 14

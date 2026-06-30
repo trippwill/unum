@@ -26,7 +26,7 @@ func TestConfigRoundTrip(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if got.ServerName != "lab" || got.Runtime.Backend != "podman" || got.Inference.BasePath != "/openai/v1" || got.Profiles.MaxMemory != "32g" {
+	if got.ServerName != "lab" || got.Runtime.Backend != "podman" || got.Inference.BasePath != "/openai/v1" || got.Inventory.MemoryMax != "32g" {
 		t.Fatalf("unexpected config: %+v", got)
 	}
 }
@@ -52,7 +52,7 @@ func TestLoadStartsFromDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.ServerName != "lab" || cfg.Runtime.Backend != "podman" || cfg.Profiles.MaxMemory != "32g" {
+	if cfg.ServerName != "lab" || cfg.Runtime.Backend != "podman" || cfg.Inventory.MemoryMax != "32g" {
 		t.Fatalf("defaults were not applied: %+v", cfg)
 	}
 }

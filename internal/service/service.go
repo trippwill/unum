@@ -259,7 +259,12 @@ func (s *Service) StartProfile(ctx context.Context, id string) (OperationSummary
 }
 
 func (s *Service) profileValidationOptions() profile.ValidationOptions {
-	return profile.ValidationOptions{MaxMemory: s.cfg.Profiles.MaxMemory}
+	return profile.ValidationOptions{
+		MemoryMax:  s.cfg.Inventory.MemoryMax,
+		MemswapMax: s.cfg.Inventory.MemswapMax,
+		CPUsMax:    s.cfg.Inventory.CPUsMax,
+		Devices:    s.cfg.Inventory.Devices,
+	}
 }
 
 func (s *Service) runningInstance() (InstanceSummary, bool) {

@@ -35,6 +35,7 @@ func TestCreateMapsProfileToPodmanArgs(t *testing.T) {
 				SecurityOpt:  []string{"label=disable"},
 				Entrypoint:   "/bin/bash",
 				Command:      []string{"serve", "--port", "18080"},
+				Cpus:         "8",
 			},
 		},
 	}
@@ -54,6 +55,7 @@ func TestCreateMapsProfileToPodmanArgs(t *testing.T) {
 		"--network", "host",
 		"--memory", "32g",
 		"--memory-swap", "32g",
+		"--cpus", "8",
 		"--shm-size", "8g",
 		"--oom-score-adj", "900",
 		"--env", "A=1",

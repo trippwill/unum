@@ -63,6 +63,102 @@ func TestEffectiveConfigEachRoleOverridesItself(t *testing.T) {
 	}
 }
 
+func TestEffectiveConfigInventoryOverrides(t *testing.T) {
+	cfg, _ := effectiveConfig(InitOptions{
+		MemoryMax:  "64g",
+		MemswapMax: "128g",
+		CPUsMax:    "16",
+		Devices:    []string{"/dev/dri/renderD129", "/dev/dri/card0"},
+	})
+	if cfg.Inventory.MemoryMax != "64g" ||
+		cfg.Inventory.MemswapMax != "128g" ||
+		cfg.Inventory.CPUsMax != "16" {
+		t.Fatalf("inventory ceilings = %+v", cfg.Inventory)
+	}
+	if len(cfg.Inventory.Devices) != 2 ||
+		cfg.Inventory.Devices[0] != "/dev/dri/renderD129" ||
+		cfg.Inventory.Devices[1] != "/dev/dri/card0" {
+		t.Fatalf("inventory devices = %+v", cfg.Inventory.Devices)
+	}
+}
+
+func TestEffectiveConfigInventoryDefaultsWhenUnset(t *testing.T) {
+	cfg, _ := effectiveConfig(InitOptions{})
+	def := config.Default()
+	if cfg.Inventory.MemoryMax != def.Inventory.MemoryMax ||
+		cfg.Inventory.MemswapMax != def.Inventory.MemswapMax ||
+		cfg.Inventory.CPUsMax != def.Inventory.CPUsMax ||
+		len(cfg.Inventory.Devices) != len(def.Inventory.Devices) {
+		t.Fatalf("inventory drifted from defaults: %+v vs %+v", cfg.Inventory, def.Inventory)
+	}
+}
+
+func TestInitRejectsRelativeDevicePath(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "unumd.toml")
+	state, profiles, models, cache := tempRoles(t, dir)
+
+	err := Init(InitOptions{
+		ConfigPath: cfgPath,
+		StateDir:   state,
+		Profiles:   profiles,
+		Models:     models,
+		Cache:      cache,
+		Devices:    []string{"dri/renderD129"},
+	})
+	if err == nil {
+		t.Fatal("expected init to reject relative device path")
+	}
+	if !strings.Contains(err.Error(), "must be absolute") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if _, statErr := os.Stat(cfgPath); !os.IsNotExist(statErr) {
+		t.Fatalf("config should not be written when inventory is invalid: %v", statErr)
+	}
+}
+
+func TestInitRejectsInvalidCPUsMax(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "unumd.toml")
+	state, profiles, models, cache := tempRoles(t, dir)
+
+	err := Init(InitOptions{
+		ConfigPath: cfgPath,
+		StateDir:   state,
+		Profiles:   profiles,
+		Models:     models,
+		Cache:      cache,
+		CPUsMax:    "NaN",
+	})
+	if err == nil {
+		t.Fatal("expected init to reject NaN cpus_max")
+	}
+	if !strings.Contains(err.Error(), "invalid cpus_max") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestInitRejectsInvalidMemoryMax(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "unumd.toml")
+	state, profiles, models, cache := tempRoles(t, dir)
+
+	err := Init(InitOptions{
+		ConfigPath: cfgPath,
+		StateDir:   state,
+		Profiles:   profiles,
+		Models:     models,
+		Cache:      cache,
+		MemoryMax:  "huge",
+	})
+	if err == nil {
+		t.Fatal("expected init to reject invalid memory_max")
+	}
+	if !strings.Contains(err.Error(), "invalid memory_max") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
 func TestInitWritesFlatLayoutWithDefaults(t *testing.T) {
 	dir := t.TempDir()
 	cfgPath := filepath.Join(dir, "etc", "unumd.toml")

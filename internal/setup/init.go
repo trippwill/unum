@@ -8,8 +8,11 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
 
 	"golang.org/x/crypto/ssh"
 
@@ -28,11 +31,19 @@ type InitOptions struct {
 	Profiles   string
 	Models     string
 	Cache      string
+	MemoryMax  string
+	MemswapMax string
+	CPUsMax    string
+	Devices    []string
 	Overwrite  bool
 }
 
 func Init(opts InitOptions) error {
 	cfg, configPath := effectiveConfig(opts)
+
+	if err := validateInventory(cfg); err != nil {
+		return err
+	}
 
 	if !opts.Overwrite {
 		if _, err := os.Stat(configPath); err == nil {
@@ -99,6 +110,18 @@ func effectiveConfig(opts InitOptions) (config.Config, string) {
 	if opts.Cache != "" {
 		cfg.Storage.Cache = opts.Cache
 	}
+	if opts.MemoryMax != "" {
+		cfg.Inventory.MemoryMax = opts.MemoryMax
+	}
+	if opts.MemswapMax != "" {
+		cfg.Inventory.MemswapMax = opts.MemswapMax
+	}
+	if opts.CPUsMax != "" {
+		cfg.Inventory.CPUsMax = opts.CPUsMax
+	}
+	if len(opts.Devices) > 0 {
+		cfg.Inventory.Devices = append([]string(nil), opts.Devices...)
+	}
 	cfg.SSHTUI.HostKey = filepath.Join(cfg.Storage.State, "ssh", "host_ed25519")
 	return cfg, configPath
 }
@@ -108,6 +131,81 @@ func mkdirAll(path string, perm os.FileMode) error {
 		return fmt.Errorf("create directory %s: %w", path, err)
 	}
 	return nil
+}
+
+func validateInventory(cfg config.Config) error {
+	if err := validateInventoryMemory("memory_max", cfg.Inventory.MemoryMax); err != nil {
+		return err
+	}
+	if err := validateInventoryMemory("memswap_max", cfg.Inventory.MemswapMax); err != nil {
+		return err
+	}
+	if err := validateInventoryCPUs(cfg.Inventory.CPUsMax); err != nil {
+		return err
+	}
+	for _, d := range cfg.Inventory.Devices {
+		if strings.TrimSpace(d) == "" {
+			return fmt.Errorf("inventory device path cannot be blank")
+		}
+		if !filepath.IsAbs(d) {
+			return fmt.Errorf("inventory device path must be absolute: %q", d)
+		}
+	}
+	return nil
+}
+
+func validateInventoryMemory(name, value string) error {
+	v := strings.TrimSpace(value)
+	if v == "" {
+		return nil
+	}
+	if _, err := parseMemory(v); err != nil {
+		return fmt.Errorf("invalid %s %q", name, value)
+	}
+	return nil
+}
+
+func validateInventoryCPUs(value string) error {
+	v := strings.TrimSpace(value)
+	if v == "" {
+		return nil
+	}
+	n, err := strconv.ParseFloat(v, 64)
+	if err != nil || n < 0 || math.IsNaN(n) || math.IsInf(n, 0) {
+		return fmt.Errorf("invalid cpus_max %q", value)
+	}
+	return nil
+}
+
+// parseMemory mirrors the profile-package parser so init can reject invalid
+// inventory values without depending on internal/profile.
+func parseMemory(value string) (int64, error) {
+	v := strings.TrimSpace(strings.ToLower(value))
+	if v == "" {
+		return 0, fmt.Errorf("memory value is empty")
+	}
+	unit := v[len(v)-1]
+	multiplier := int64(1)
+	number := v
+	switch unit {
+	case 'k':
+		multiplier = 1024
+		number = v[:len(v)-1]
+	case 'm':
+		multiplier = 1024 * 1024
+		number = v[:len(v)-1]
+	case 'g':
+		multiplier = 1024 * 1024 * 1024
+		number = v[:len(v)-1]
+	}
+	n, err := strconv.ParseInt(number, 10, 64)
+	if err != nil || n < 0 {
+		return 0, fmt.Errorf("invalid memory value %q", value)
+	}
+	if multiplier > 1 && n > math.MaxInt64/multiplier {
+		return 0, fmt.Errorf("memory value %q is too large", value)
+	}
+	return n * multiplier, nil
 }
 
 func writeConfig(path string, cfg config.Config, overwrite bool) error {

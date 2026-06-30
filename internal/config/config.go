@@ -16,7 +16,7 @@ type Config struct {
 	Inference  InferenceConfig `toml:"inference"`
 	Runtime    RuntimeConfig   `toml:"runtime"`
 	Storage    StorageConfig   `toml:"storage"`
-	Profiles   ProfilesConfig  `toml:"profiles"`
+	Inventory  InventoryConfig `toml:"inventory"`
 	Logs       LogsConfig      `toml:"logs"`
 }
 
@@ -46,8 +46,11 @@ type StorageConfig struct {
 	Cache    string `toml:"cache"`
 }
 
-type ProfilesConfig struct {
-	MaxMemory string `toml:"max_memory"`
+type InventoryConfig struct {
+	MemoryMax  string   `toml:"memory_max"`
+	MemswapMax string   `toml:"memswap_max"`
+	CPUsMax    string   `toml:"cpus_max"`
+	Devices    []string `toml:"devices"`
 }
 
 type LogsConfig struct {
@@ -77,8 +80,10 @@ func Default() Config {
 			Models:   "/var/lib/unum/models",
 			Cache:    "/var/lib/unum/cache",
 		},
-		Profiles: ProfilesConfig{
-			MaxMemory: "32g",
+		Inventory: InventoryConfig{
+			MemoryMax:  "32g",
+			MemswapMax: "32g",
+			CPUsMax:    "0",
 		},
 		Logs: LogsConfig{
 			RetainDays: 14,

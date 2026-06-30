@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"text/tabwriter"
 
@@ -67,6 +68,10 @@ func runInit(args []string) error {
 	fs.StringVar(&opts.Profiles, "profiles", "", "profile directory")
 	fs.StringVar(&opts.Models, "models", "", "model directory")
 	fs.StringVar(&opts.Cache, "cache", "", "cache directory")
+	fs.StringVar(&opts.MemoryMax, "memory-max", "", "inventory memory ceiling, e.g. 32g")
+	fs.StringVar(&opts.MemswapMax, "memswap-max", "", "inventory memswap ceiling, e.g. 32g")
+	fs.StringVar(&opts.CPUsMax, "cpus-max", "", "inventory cpus ceiling, fractional cores")
+	fs.Var(repeatableString{&opts.Devices}, "device", "register an absolute device path; repeat for multiple")
 	fs.BoolVar(&opts.Overwrite, "overwrite", false, "overwrite existing config file")
 	if err := fs.Parse(args); err != nil {
 		return err
@@ -75,6 +80,23 @@ func runInit(args []string) error {
 		return fmt.Errorf("init takes no positional arguments")
 	}
 	return setup.Init(opts)
+}
+
+type repeatableString struct{ values *[]string }
+
+func (r repeatableString) String() string {
+	if r.values == nil {
+		return ""
+	}
+	return strings.Join(*r.values, ",")
+}
+
+func (r repeatableString) Set(v string) error {
+	if r.values == nil {
+		return fmt.Errorf("nil destination")
+	}
+	*r.values = append(*r.values, v)
+	return nil
 }
 
 func runStatus(args []string) error {
@@ -453,7 +475,7 @@ func usage() {
 	fmt.Println(`unumd controls the unum trusted-server inference manager.
 
 Usage:
-  unumd init [--config PATH] [--state PATH] [--profiles PATH] [--models PATH] [--cache PATH] [--server-name NAME] [--overwrite]
+  unumd init [--config PATH] [--state PATH] [--profiles PATH] [--models PATH] [--cache PATH] [--memory-max SIZE] [--memswap-max SIZE] [--cpus-max N] [--device PATH ...] [--server-name NAME] [--overwrite]
   unumd profiles list [--config PATH]
   unumd profiles validate [--config PATH] ID
   unumd status [--config PATH]

@@ -29,7 +29,7 @@ func TestValidateRejectsOversizedMemoryForConfiguredLimit(t *testing.T) {
 		t.Fatal("profile unexpectedly valid")
 	}
 	want := strings.Join(got.Errors, "\n")
-	for _, part := range []string{"mem_limit exceeds configured max_memory 32g", "devices host must be absolute"} {
+	for _, part := range []string{"mem_limit exceeds configured memory_max 32g", "devices host must be absolute"} {
 		if !strings.Contains(want, part) {
 			t.Fatalf("errors %q do not contain %q", want, part)
 		}
@@ -43,9 +43,118 @@ func TestValidateUsesConfigurableMemoryLimit(t *testing.T) {
 	svc.MemswapLimit = "128g"
 	p.Services["qwen3-small-cpu"] = svc
 
-	got := Validate(p, ValidationOptions{MaxMemory: "128g"})
+	got := Validate(p, ValidationOptions{MemoryMax: "128g", MemswapMax: "128g"})
 	if !got.Valid {
 		t.Fatalf("Validate errors = %v", got.Errors)
+	}
+}
+
+func TestValidateRejectsSwapOverMemswapMax(t *testing.T) {
+	p := validProfile(t.TempDir())
+	svc := p.Services["qwen3-small-cpu"]
+	svc.MemLimit = "16g"
+	svc.MemswapLimit = "64g"
+	p.Services["qwen3-small-cpu"] = svc
+
+	got := Validate(p, ValidationOptions{MemoryMax: "32g", MemswapMax: "32g"})
+	if got.Valid || !strings.Contains(strings.Join(got.Errors, "\n"), "memswap_limit exceeds configured memswap_max 32g") {
+		t.Fatalf("errors = %v", got.Errors)
+	}
+}
+
+func TestValidateRejectsCPUsOverCeiling(t *testing.T) {
+	p := validProfile(t.TempDir())
+	svc := p.Services["qwen3-small-cpu"]
+	svc.Cpus = "32"
+	p.Services["qwen3-small-cpu"] = svc
+
+	got := Validate(p, ValidationOptions{MemoryMax: "32g", MemswapMax: "32g", CPUsMax: "16"})
+	if got.Valid || !strings.Contains(strings.Join(got.Errors, "\n"), "cpus exceeds configured cpus_max 16") {
+		t.Fatalf("errors = %v", got.Errors)
+	}
+}
+
+func TestValidateAcceptsCPUsWithinCeiling(t *testing.T) {
+	p := validProfile(t.TempDir())
+	svc := p.Services["qwen3-small-cpu"]
+	svc.Cpus = "8"
+	p.Services["qwen3-small-cpu"] = svc
+
+	got := Validate(p, ValidationOptions{MemoryMax: "32g", MemswapMax: "32g", CPUsMax: "16"})
+	if !got.Valid {
+		t.Fatalf("Validate errors = %v", got.Errors)
+	}
+}
+
+func TestValidateSkipsCPUsCheckWhenCeilingZero(t *testing.T) {
+	p := validProfile(t.TempDir())
+	svc := p.Services["qwen3-small-cpu"]
+	svc.Cpus = "999"
+	p.Services["qwen3-small-cpu"] = svc
+
+	got := Validate(p, ValidationOptions{MemoryMax: "32g", MemswapMax: "32g", CPUsMax: "0"})
+	if !got.Valid {
+		t.Fatalf("Validate errors = %v", got.Errors)
+	}
+}
+
+func TestValidateRejectsZeroOrNegativeCPUs(t *testing.T) {
+	p := validProfile(t.TempDir())
+	svc := p.Services["qwen3-small-cpu"]
+	svc.Cpus = "0"
+	p.Services["qwen3-small-cpu"] = svc
+
+	got := Validate(p, testValidationOptions())
+	if got.Valid || !strings.Contains(strings.Join(got.Errors, "\n"), "cpus must be greater than 0") {
+		t.Fatalf("errors = %v", got.Errors)
+	}
+}
+
+func TestValidateAcceptsRegisteredDevice(t *testing.T) {
+	p := validProfile(t.TempDir())
+	svc := p.Services["qwen3-small-cpu"]
+	svc.Devices = []string{"/dev/dri/renderD129:/dev/dri/renderD129"}
+	p.Services["qwen3-small-cpu"] = svc
+
+	got := Validate(p, ValidationOptions{
+		MemoryMax:  "32g",
+		MemswapMax: "32g",
+		Devices:    []string{"/dev/dri/renderD129"},
+	})
+	if !got.Valid {
+		t.Fatalf("Validate errors = %v", got.Errors)
+	}
+}
+
+func TestValidateRejectsUnregisteredDevice(t *testing.T) {
+	p := validProfile(t.TempDir())
+	svc := p.Services["qwen3-small-cpu"]
+	svc.Devices = []string{"/dev/dri/renderD129"}
+	p.Services["qwen3-small-cpu"] = svc
+
+	got := Validate(p, testValidationOptions())
+	if got.Valid {
+		t.Fatal("profile unexpectedly valid with empty device registry")
+	}
+	if !strings.Contains(strings.Join(got.Errors, "\n"), "/dev/dri/renderD129 is not in [inventory].devices") {
+		t.Fatalf("errors = %v", got.Errors)
+	}
+}
+
+func TestValidateRejectsUnregisteredDeviceBindMount(t *testing.T) {
+	p := validProfile(t.TempDir())
+	svc := p.Services["qwen3-small-cpu"]
+	svc.Volumes = Volumes{
+		{Type: "bind", Source: "/dev/dri/card0", Target: "/dev/dri/card0"},
+	}
+	p.Services["qwen3-small-cpu"] = svc
+
+	got := Validate(p, testValidationOptions())
+	if got.Valid {
+		t.Fatal("profile unexpectedly valid: /dev/* bind mount bypassed registry")
+	}
+	if !strings.Contains(strings.Join(got.Errors, "\n"), "device path /dev/dri/card0 is not in [inventory].devices") {
+		t.Fatalf("errors = %v", got.Errors)
 	}
 }
 
@@ -140,12 +249,9 @@ func TestQwen3CoderB60ExampleLoads(t *testing.T) {
 	if len(svc.Volumes) == 0 || svc.Volumes[0].Type != "bind" {
 		t.Fatalf("volumes = %+v", svc.Volumes)
 	}
-	got := Validate(p, testValidationOptions())
-	errors := strings.Join(got.Errors, "\n")
-	for _, unexpected := range []string{"volumes:", "oom_score_adj", "mem_limit", "memswap_limit", "devices:"} {
-		if strings.Contains(errors, unexpected) {
-			t.Fatalf("example schema error %q in %v", unexpected, got.Errors)
-		}
+	got := Validate(p, b60ValidationOptions())
+	if !got.Valid {
+		t.Fatalf("example schema errors: %v", got.Errors)
 	}
 }
 
@@ -212,7 +318,23 @@ func validProfile(model string) Profile {
 }
 
 func testValidationOptions() ValidationOptions {
-	return ValidationOptions{MaxMemory: "32g"}
+	return ValidationOptions{
+		MemoryMax:  "32g",
+		MemswapMax: "32g",
+	}
+}
+
+func b60ValidationOptions() ValidationOptions {
+	return ValidationOptions{
+		MemoryMax:  "32g",
+		MemswapMax: "64g",
+		Devices: []string{
+			"/dev/dri/renderD129",
+			"/dev/dri/card0",
+			"/dev/dri/by-path/pci-0000:12:00.0-card",
+			"/dev/dri/by-path/pci-0000:12:00.0-render",
+		},
+	}
 }
 
 func writeProfile(t *testing.T, path, id, model string) {

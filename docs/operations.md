@@ -97,12 +97,38 @@ ssh -p 2222 unum.internal
 
 Start from [`examples/unumd.toml`](../examples/unumd.toml). Hostnames, IPs,
 ports, model paths, TLS paths, and device mappings are deployment config.
-Profile memory validation defaults to `32g`; raise `[profiles].max_memory` only
-for hosts intended to run larger profiles.
 
 Before v1, config shape may still change. If upgrading an older test install,
 remove stale `[inference].active_profile` entries; starting a profile now makes
 it the running inference target.
+
+### Server inventory
+
+`[inventory]` declares what the server actually offers. Profile validation
+checks profiles against these declared capabilities before they start.
+
+| Field | Default | Init flag | Purpose |
+| --- | --- | --- | --- |
+| `memory_max` | `32g` | `--memory-max` | Ceiling for `services.*.mem_limit` |
+| `memswap_max` | `32g` | `--memswap-max` | Ceiling for `services.*.memswap_limit` |
+| `cpus_max` | `"0"` | `--cpus-max` | Ceiling for `services.*.cpus` (fractional cores). `"0"` means unset; the check is skipped. |
+| `devices` | empty | `--device PATH` (repeatable) | Registered absolute host device paths. Any profile referencing a device that is not in this list fails validation. |
+
+The empty default for `devices` is strict on purpose: profiles that reference
+devices must declare those devices in `[inventory]` first. Edit
+`/etc/unum/unumd.toml` or re-run `unumd init --overwrite --device /dev/dri/renderD129 ...`
+to register hardware.
+
+```bash
+sudo unumd init \
+  --config /etc/unum/unumd.toml \
+  --memory-max 64g \
+  --memswap-max 64g \
+  --cpus-max 16 \
+  --device /dev/dri/renderD129 \
+  --device /dev/dri/by-path/pci-0000:12:00.0-render \
+  --overwrite
+```
 
 For local smoke testing, loopback HTTP inference is allowed:
 
