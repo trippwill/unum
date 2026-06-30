@@ -30,13 +30,13 @@ The server has **named storage roles**, not one state directory. Each role can l
 
 `unumd init` and `[storage]` config let operators place each role independently. Compose `volumes` remain the runtime source of truth; site layout supplies defaults and authoring context. Additional storage roles (e.g. for user-authored recipes) may emerge from pillar 3 without changing this principle.
 
-### 2. Server inventory + profile validation — the server as constraint
+### 2. Machine capabilities + profile validation — the server as constraint
 
 Unum knows what *this* server actually offers, and validates profiles against it before they run.
 
-- An operator-declared **inventory** records memory ceiling, accelerator devices (absolute host paths), declared port ranges, and optional cache roots.
+- An operator-declared **`[machine]` section** records memory ceiling, accelerator devices (absolute host paths), declared port ranges, and optional cache roots.
 - No autodetection beyond simple reporting; the operator is the source of truth.
-- Profile validation runs against the inventory: device paths must be registered, memory limits must fit the ceiling, ports must not collide with reserved ranges.
+- Profile validation runs against the machine declaration: device paths must be registered, memory limits must fit the ceiling, ports must not collide with reserved ranges.
 - Validation errors say what is missing and what command would fix it.
 
 This generalizes today's `[profiles].max_memory` into a real capability model.
@@ -56,7 +56,7 @@ Recipe schema, storage, CLI surface, and built-in catalog scope are deferred to 
 
 After `unumd init`, the **TUI is the product**.
 
-- Dashboard, profiles, instances, logs (live-follow), tokens, server inventory, and recipe browser are reachable, consistent, keyboard-driven.
+- Dashboard, profiles, instances, logs (live-follow), tokens, machine capabilities, and recipe browser are reachable, consistent, keyboard-driven.
 - Every error tells the operator what to do next.
 - Visual craft is a goal, not a side effect: deliberate layout, terminal-aware typography, color used sparingly and meaningfully, small moments of delight that do not fight clarity.
 - The CLI stays complete for scripting and onboarding; day-to-day operation lives in the TUI.
@@ -81,7 +81,7 @@ After `unumd init`, the **TUI is the product**.
 
 - Recipe schema, storage, CLI surface, and built-in catalog scope (follow-up design).
 - Recipe sharing or registry.
-- Inventory autodiscovery beyond simple reporting.
+- Machine autodiscovery beyond simple reporting.
 - Multi-server federation.
 - Per-recipe TUI wizards.
 - Public internet exposure, RBAC/OAuth/OIDC, desktop/browser UI, Kubernetes — unchanged non-goals.

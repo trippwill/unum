@@ -41,7 +41,7 @@ type InitOptions struct {
 func Init(opts InitOptions) error {
 	cfg, configPath := effectiveConfig(opts)
 
-	if err := validateInventory(cfg); err != nil {
+	if err := validateMachine(cfg); err != nil {
 		return err
 	}
 
@@ -111,16 +111,16 @@ func effectiveConfig(opts InitOptions) (config.Config, string) {
 		cfg.Storage.Cache = opts.Cache
 	}
 	if opts.MemoryMax != "" {
-		cfg.Inventory.MemoryMax = opts.MemoryMax
+		cfg.Machine.MemoryMax = opts.MemoryMax
 	}
 	if opts.MemswapMax != "" {
-		cfg.Inventory.MemswapMax = opts.MemswapMax
+		cfg.Machine.MemswapMax = opts.MemswapMax
 	}
 	if opts.CPUsMax != "" {
-		cfg.Inventory.CPUsMax = opts.CPUsMax
+		cfg.Machine.CPUsMax = opts.CPUsMax
 	}
 	if len(opts.Devices) > 0 {
-		cfg.Inventory.Devices = append([]string(nil), opts.Devices...)
+		cfg.Machine.Devices = append([]string(nil), opts.Devices...)
 	}
 	cfg.SSHTUI.HostKey = filepath.Join(cfg.Storage.State, "ssh", "host_ed25519")
 	return cfg, configPath
@@ -133,28 +133,28 @@ func mkdirAll(path string, perm os.FileMode) error {
 	return nil
 }
 
-func validateInventory(cfg config.Config) error {
-	if err := validateInventoryMemory("memory_max", cfg.Inventory.MemoryMax); err != nil {
+func validateMachine(cfg config.Config) error {
+	if err := validateMachineMemory("memory_max", cfg.Machine.MemoryMax); err != nil {
 		return err
 	}
-	if err := validateInventoryMemory("memswap_max", cfg.Inventory.MemswapMax); err != nil {
+	if err := validateMachineMemory("memswap_max", cfg.Machine.MemswapMax); err != nil {
 		return err
 	}
-	if err := validateInventoryCPUs(cfg.Inventory.CPUsMax); err != nil {
+	if err := validateMachineCPUs(cfg.Machine.CPUsMax); err != nil {
 		return err
 	}
-	for _, d := range cfg.Inventory.Devices {
+	for _, d := range cfg.Machine.Devices {
 		if strings.TrimSpace(d) == "" {
-			return fmt.Errorf("inventory device path cannot be blank")
+			return fmt.Errorf("machine device path cannot be blank")
 		}
 		if !filepath.IsAbs(d) {
-			return fmt.Errorf("inventory device path must be absolute: %q", d)
+			return fmt.Errorf("machine device path must be absolute: %q", d)
 		}
 	}
 	return nil
 }
 
-func validateInventoryMemory(name, value string) error {
+func validateMachineMemory(name, value string) error {
 	v := strings.TrimSpace(value)
 	if v == "" {
 		return nil
@@ -165,7 +165,7 @@ func validateInventoryMemory(name, value string) error {
 	return nil
 }
 
-func validateInventoryCPUs(value string) error {
+func validateMachineCPUs(value string) error {
 	v := strings.TrimSpace(value)
 	if v == "" {
 		return nil
@@ -178,7 +178,7 @@ func validateInventoryCPUs(value string) error {
 }
 
 // parseMemory mirrors the profile-package parser so init can reject invalid
-// inventory values without depending on internal/profile.
+// machine values without depending on internal/profile.
 func parseMemory(value string) (int64, error) {
 	v := strings.TrimSpace(strings.ToLower(value))
 	if v == "" {

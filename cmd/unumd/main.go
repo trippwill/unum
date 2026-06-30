@@ -37,6 +37,8 @@ func run(args []string) error {
 	switch args[0] {
 	case "init":
 		return runInit(args[1:])
+	case "config":
+		return runConfig(args[1:])
 	case "profiles":
 		return runProfiles(args[1:])
 	case "status":
@@ -68,9 +70,9 @@ func runInit(args []string) error {
 	fs.StringVar(&opts.Profiles, "profiles", "", "profile directory")
 	fs.StringVar(&opts.Models, "models", "", "model directory")
 	fs.StringVar(&opts.Cache, "cache", "", "cache directory")
-	fs.StringVar(&opts.MemoryMax, "memory-max", "", "inventory memory ceiling, e.g. 32g")
-	fs.StringVar(&opts.MemswapMax, "memswap-max", "", "inventory memswap ceiling, e.g. 32g")
-	fs.StringVar(&opts.CPUsMax, "cpus-max", "", "inventory cpus ceiling, fractional cores")
+	fs.StringVar(&opts.MemoryMax, "memory-max", "", "machine memory ceiling, e.g. 32g")
+	fs.StringVar(&opts.MemswapMax, "memswap-max", "", "machine memswap ceiling, e.g. 32g")
+	fs.StringVar(&opts.CPUsMax, "cpus-max", "", "machine cpus ceiling, fractional cores")
 	fs.Var(repeatableString{&opts.Devices}, "device", "register an absolute device path; repeat for multiple")
 	fs.BoolVar(&opts.Overwrite, "overwrite", false, "overwrite existing config file")
 	if err := fs.Parse(args); err != nil {
@@ -97,6 +99,70 @@ func (r repeatableString) Set(v string) error {
 	}
 	*r.values = append(*r.values, v)
 	return nil
+}
+
+func runConfig(args []string) error {
+	if len(args) == 0 {
+		return fmt.Errorf("config subcommand is required")
+	}
+	switch args[0] {
+	case "get":
+		return runConfigGet(args[1:])
+	case "update":
+		return runConfigUpdate(args[1:])
+	default:
+		return fmt.Errorf("unknown config subcommand %q", args[0])
+	}
+}
+
+func runConfigGet(args []string) error {
+	fs := flag.NewFlagSet("config get", flag.ContinueOnError)
+	fs.SetOutput(os.Stderr)
+	configPath := fs.String("config", config.DefaultPath, "config file path")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if fs.NArg() != 0 {
+		return fmt.Errorf("config get takes no positional arguments")
+	}
+	cfg, err := config.Load(*configPath)
+	if err != nil {
+		return err
+	}
+	data, err := config.Marshal(cfg)
+	if err != nil {
+		return err
+	}
+	if _, err := os.Stdout.Write(data); err != nil {
+		return err
+	}
+	if len(data) > 0 && data[len(data)-1] != '\n' {
+		fmt.Println()
+	}
+	return nil
+}
+
+func runConfigUpdate(args []string) error {
+	fs := flag.NewFlagSet("config update", flag.ContinueOnError)
+	fs.SetOutput(os.Stderr)
+	opts := setup.UpdateOptions{}
+	fs.StringVar(&opts.ConfigPath, "config", config.DefaultPath, "config file path")
+	fs.StringVar(&opts.ServerName, "server-name", "", "server name")
+	fs.StringVar(&opts.StateDir, "state", "", "state directory")
+	fs.StringVar(&opts.Profiles, "profiles", "", "profile directory")
+	fs.StringVar(&opts.Models, "models", "", "model directory")
+	fs.StringVar(&opts.Cache, "cache", "", "cache directory")
+	fs.StringVar(&opts.MemoryMax, "memory-max", "", "machine memory ceiling, e.g. 32g")
+	fs.StringVar(&opts.MemswapMax, "memswap-max", "", "machine memswap ceiling, e.g. 32g")
+	fs.StringVar(&opts.CPUsMax, "cpus-max", "", "machine cpus ceiling, fractional cores")
+	fs.Var(repeatableString{&opts.Devices}, "device", "replace the registered device list with the given absolute paths; repeat for multiple")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if fs.NArg() != 0 {
+		return fmt.Errorf("config update takes no positional arguments")
+	}
+	return setup.Update(opts)
 }
 
 func runStatus(args []string) error {
@@ -476,6 +542,8 @@ func usage() {
 
 Usage:
   unumd init [--config PATH] [--state PATH] [--profiles PATH] [--models PATH] [--cache PATH] [--memory-max SIZE] [--memswap-max SIZE] [--cpus-max N] [--device PATH ...] [--server-name NAME] [--overwrite]
+  unumd config update [--config PATH] [--state PATH] [--profiles PATH] [--models PATH] [--cache PATH] [--memory-max SIZE] [--memswap-max SIZE] [--cpus-max N] [--device PATH ...] [--server-name NAME]
+  unumd config get [--config PATH]
   unumd profiles list [--config PATH]
   unumd profiles validate [--config PATH] ID
   unumd status [--config PATH]

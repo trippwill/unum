@@ -22,7 +22,7 @@ profiles = "/var/lib/unum/profiles"
 models = "/var/lib/unum/models"
 cache = "/var/lib/unum/cache"
 
-[inventory]
+[machine]
 memory_max = "32g"
 memswap_max = "32g"
 cpus_max = "0"

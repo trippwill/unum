@@ -260,10 +260,10 @@ func (s *Service) StartProfile(ctx context.Context, id string) (OperationSummary
 
 func (s *Service) profileValidationOptions() profile.ValidationOptions {
 	return profile.ValidationOptions{
-		MemoryMax:  s.cfg.Inventory.MemoryMax,
-		MemswapMax: s.cfg.Inventory.MemswapMax,
-		CPUsMax:    s.cfg.Inventory.CPUsMax,
-		Devices:    s.cfg.Inventory.Devices,
+		MemoryMax:  s.cfg.Machine.MemoryMax,
+		MemswapMax: s.cfg.Machine.MemswapMax,
+		CPUsMax:    s.cfg.Machine.CPUsMax,
+		Devices:    s.cfg.Machine.Devices,
 	}
 }
 

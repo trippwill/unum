@@ -192,7 +192,7 @@ func Validate(p Profile, opts ValidationOptions) ValidationResult {
 			}
 			if host := volumeHost(volume); host != "" && strings.HasPrefix(host, "/dev/") {
 				if _, ok := devices[host]; !ok {
-					errs = append(errs, "services."+name+".volumes: device path "+host+" is not in [inventory].devices")
+					errs = append(errs, "services."+name+".volumes: device path "+host+" is not in [machine].devices")
 				}
 			}
 		}
@@ -210,7 +210,7 @@ func Validate(p Profile, opts ValidationOptions) ValidationResult {
 				continue
 			}
 			if _, ok := devices[host]; !ok {
-				errs = append(errs, "services."+name+".devices: "+host+" is not in [inventory].devices")
+				errs = append(errs, "services."+name+".devices: "+host+" is not in [machine].devices")
 			}
 		}
 	}

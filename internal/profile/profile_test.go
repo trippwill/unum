@@ -136,7 +136,7 @@ func TestValidateRejectsUnregisteredDevice(t *testing.T) {
 	if got.Valid {
 		t.Fatal("profile unexpectedly valid with empty device registry")
 	}
-	if !strings.Contains(strings.Join(got.Errors, "\n"), "/dev/dri/renderD129 is not in [inventory].devices") {
+	if !strings.Contains(strings.Join(got.Errors, "\n"), "/dev/dri/renderD129 is not in [machine].devices") {
 		t.Fatalf("errors = %v", got.Errors)
 	}
 }
@@ -153,7 +153,7 @@ func TestValidateRejectsUnregisteredDeviceBindMount(t *testing.T) {
 	if got.Valid {
 		t.Fatal("profile unexpectedly valid: /dev/* bind mount bypassed registry")
 	}
-	if !strings.Contains(strings.Join(got.Errors, "\n"), "device path /dev/dri/card0 is not in [inventory].devices") {
+	if !strings.Contains(strings.Join(got.Errors, "\n"), "device path /dev/dri/card0 is not in [machine].devices") {
 		t.Fatalf("errors = %v", got.Errors)
 	}
 }

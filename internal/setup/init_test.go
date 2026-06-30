@@ -63,33 +63,33 @@ func TestEffectiveConfigEachRoleOverridesItself(t *testing.T) {
 	}
 }
 
-func TestEffectiveConfigInventoryOverrides(t *testing.T) {
+func TestEffectiveConfigMachineOverrides(t *testing.T) {
 	cfg, _ := effectiveConfig(InitOptions{
 		MemoryMax:  "64g",
 		MemswapMax: "128g",
 		CPUsMax:    "16",
 		Devices:    []string{"/dev/dri/renderD129", "/dev/dri/card0"},
 	})
-	if cfg.Inventory.MemoryMax != "64g" ||
-		cfg.Inventory.MemswapMax != "128g" ||
-		cfg.Inventory.CPUsMax != "16" {
-		t.Fatalf("inventory ceilings = %+v", cfg.Inventory)
+	if cfg.Machine.MemoryMax != "64g" ||
+		cfg.Machine.MemswapMax != "128g" ||
+		cfg.Machine.CPUsMax != "16" {
+		t.Fatalf("machine ceilings = %+v", cfg.Machine)
 	}
-	if len(cfg.Inventory.Devices) != 2 ||
-		cfg.Inventory.Devices[0] != "/dev/dri/renderD129" ||
-		cfg.Inventory.Devices[1] != "/dev/dri/card0" {
-		t.Fatalf("inventory devices = %+v", cfg.Inventory.Devices)
+	if len(cfg.Machine.Devices) != 2 ||
+		cfg.Machine.Devices[0] != "/dev/dri/renderD129" ||
+		cfg.Machine.Devices[1] != "/dev/dri/card0" {
+		t.Fatalf("machine devices = %+v", cfg.Machine.Devices)
 	}
 }
 
-func TestEffectiveConfigInventoryDefaultsWhenUnset(t *testing.T) {
+func TestEffectiveConfigMachineDefaultsWhenUnset(t *testing.T) {
 	cfg, _ := effectiveConfig(InitOptions{})
 	def := config.Default()
-	if cfg.Inventory.MemoryMax != def.Inventory.MemoryMax ||
-		cfg.Inventory.MemswapMax != def.Inventory.MemswapMax ||
-		cfg.Inventory.CPUsMax != def.Inventory.CPUsMax ||
-		len(cfg.Inventory.Devices) != len(def.Inventory.Devices) {
-		t.Fatalf("inventory drifted from defaults: %+v vs %+v", cfg.Inventory, def.Inventory)
+	if cfg.Machine.MemoryMax != def.Machine.MemoryMax ||
+		cfg.Machine.MemswapMax != def.Machine.MemswapMax ||
+		cfg.Machine.CPUsMax != def.Machine.CPUsMax ||
+		len(cfg.Machine.Devices) != len(def.Machine.Devices) {
+		t.Fatalf("machine drifted from defaults: %+v vs %+v", cfg.Machine, def.Machine)
 	}
 }
 
@@ -113,7 +113,7 @@ func TestInitRejectsRelativeDevicePath(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if _, statErr := os.Stat(cfgPath); !os.IsNotExist(statErr) {
-		t.Fatalf("config should not be written when inventory is invalid: %v", statErr)
+		t.Fatalf("config should not be written when machine is invalid: %v", statErr)
 	}
 }
 

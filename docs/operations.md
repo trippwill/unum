@@ -32,6 +32,29 @@ sudo unumd init --config /etc/unum/unumd.toml --state /var/lib/unum --server-nam
 replace it; existing SSH host keys and starter profile files are always
 preserved.
 
+For incremental edits to an existing config, use `unumd config update` instead:
+
+```bash
+sudo unumd config update --memory-max 64g --device /dev/dri/renderD129
+```
+
+To dump the effective config (defaults plus what is loaded from disk):
+
+```bash
+sudo unumd config get
+```
+
+`unumd config update` only changes the fields you pass; everything else is
+preserved as loaded. Machine values are validated before the file is rewritten
+(atomically via a same-directory temp file + rename). It does not create or move
+filesystem directories, and does not auto-derive the SSH host key path from
+`--state` — for full reinitialization use `unumd init --overwrite`. The
+`--device` flag replaces the entire device list when used (there is no
+add/remove semantic).
+
+`unumd config update` cannot clear a field back to empty; to remove a ceiling
+or device list, edit the TOML directly or re-run `unumd init --overwrite`.
+
 ### Storage layout
 
 `[storage]` defines four independent paths. Defaults are flat under
@@ -102,9 +125,9 @@ Before v1, config shape may still change. If upgrading an older test install,
 remove stale `[inference].active_profile` entries; starting a profile now makes
 it the running inference target.
 
-### Server inventory
+### Machine capabilities
 
-`[inventory]` declares what the server actually offers. Profile validation
+`[machine]` declares what the server actually offers. Profile validation
 checks profiles against these declared capabilities before they start.
 
 | Field | Default | Init flag | Purpose |
@@ -115,7 +138,7 @@ checks profiles against these declared capabilities before they start.
 | `devices` | empty | `--device PATH` (repeatable) | Registered absolute host device paths. Any profile referencing a device that is not in this list fails validation. |
 
 The empty default for `devices` is strict on purpose: profiles that reference
-devices must declare those devices in `[inventory]` first. Edit
+devices must declare those devices in `[machine]` first. Edit
 `/etc/unum/unumd.toml` or re-run `unumd init --overwrite --device /dev/dri/renderD129 ...`
 to register hardware.
 

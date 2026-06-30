@@ -296,8 +296,8 @@ func TestListProfilesUsesConfiguredMemoryLimit(t *testing.T) {
 	writeLargeMemoryProfile(t, filepath.Join(dir, "qwen.yaml"), model)
 	cfg := config.Default()
 	cfg.Storage.Profiles = dir
-	cfg.Inventory.MemoryMax = "64g"
-	cfg.Inventory.MemswapMax = "128g"
+	cfg.Machine.MemoryMax = "64g"
+	cfg.Machine.MemswapMax = "128g"
 	svc := New(cfg, "test-version", WithRuntimeBackend(&fakeRuntime{}))
 
 	profiles, err := svc.ListProfiles(context.Background())
